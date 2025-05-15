@@ -16,9 +16,9 @@ const peerConfig = {
       { urls: 'stun:stun1.l.google.com:19302' },
       // Vous devriez ajouter vos propres serveurs TURN ici pour une meilleure fiabilité
        {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-         credential: 'openrelayproject'
+        urls: 'relay1.expressturn.com:3480',
+        username: 'efC31HLVNPO2ESV7EI',
+         credential: 'p3iL2wVPAhMAlmgD'
       }
     ]
   }
