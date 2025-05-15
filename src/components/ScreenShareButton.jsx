@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // --- Définitions des Icônes SVG pour ScreenShareButton ---
 const IconScreenShare = ({ className = "w-5 h-5" }) => (
@@ -11,88 +11,131 @@ const IconScreenShareStop = ({ className = "w-5 h-5" }) => (
 );
 // --- Fin Définitions des Icônes SVG ---
 
-const ScreenShareButton = ({ onStreamChanged, onShareEnded, localStream }) => {
+const ScreenShareButton = ({ onStreamChanged, onShareEnded, localStream, buttonClassName: propButtonClassName, iconClassName: propIconClassName }) => {
   const [isSharing, setIsSharing] = useState(false);
-  const [screenStream, setScreenStream] = useState(null);
+  const screenStreamRef = useRef(null); // Utiliser useRef pour le screenStream afin d'éviter des re-render inutiles et garder une référence stable
 
   const startScreenShare = async () => {
-    if (isSharing) return;
+    console.log('[ScreenShareButton] Attempting to start screen share...');
+    if (isSharing) {
+      console.log('[ScreenShareButton] Already sharing, aborting startScreenShare.');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: "always" },
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
       });
       
+      console.log('[ScreenShareButton] getDisplayMedia SUCCESS. Stream:', stream);
+
       if (stream.getVideoTracks().length > 0) {
-        stream.getVideoTracks()[0].onended = () => {
-          console.log('Partage d\'écran arrêté par l\'utilisateur (via les contrôles du navigateur).');
+        const videoTrack = stream.getVideoTracks()[0];
+        console.log('[ScreenShareButton] Video track obtained:', videoTrack, 'readyState:', videoTrack.readyState);
+        videoTrack.onended = () => {
+          console.log('[ScreenShareButton] videoTrack.onended TRIGGERED. Track readyState:', videoTrack.readyState);
           setIsSharing(false); 
         };
+        console.log('[ScreenShareButton] videoTrack.onended handler assigned.');
+      } else {
+        console.warn('[ScreenShareButton] getDisplayMedia stream has NO video tracks!');
+        // Arrêter toutes les pistes du flux (s'il y en a, par exemple audio seulement) et ne pas continuer
+        stream.getTracks().forEach(track => track.stop());
+        return;
       }
       
-      setScreenStream(stream);
+      screenStreamRef.current = stream;
       setIsSharing(true);
       onStreamChanged(stream, 'screen'); 
-      console.log('Partage d\'écran démarré.');
+      console.log('[ScreenShareButton] Screen sharing STARTED. isSharing: true');
     } catch (error) {
-      console.error("Erreur lors du démarrage du partage d'écran:", error);
+      console.error("[ScreenShareButton] Error during startScreenShare:", error.name, error.message, error);
       if (error.name === 'NotAllowedError') {
         alert("Vous n'avez pas autorisé le partage d'écran.");
       } else {
         alert("Impossible de démarrer le partage d'écran. Vérifiez les permissions ou réessayez.");
       }
       setIsSharing(false); 
+      screenStreamRef.current = null; // S'assurer que la réf est nulle en cas d'erreur
     }
   };
 
-  const performStopScreenShare = (currentScreenStream) => {
-    if (currentScreenStream) {
-      currentScreenStream.getTracks().forEach(track => track.stop());
-      console.log('Pistes du flux de partage d\'écran arrêtées.');
+  const performStopScreenShare = (streamToStop) => {
+    console.log('[ScreenShareButton] performStopScreenShare CALLED. Stream to stop:', streamToStop);
+    if (streamToStop) {
+      streamToStop.getTracks().forEach(track => {
+        console.log(`[ScreenShareButton] Stopping track: ${track.kind}, id: ${track.id}, readyState: ${track.readyState}`);
+        track.stop();
+        console.log(`[ScreenShareButton] Track ${track.id} readyState after stop(): ${track.readyState}`);
+      });
+      console.log('[ScreenShareButton] All tracks from streamToStop have been stopped.');
     }
-    setScreenStream(null); 
+    screenStreamRef.current = null; 
     
+    // On notifie le parent pour qu'il repasse au flux de la caméra
     if (localStream) { 
+      console.log('[ScreenShareButton] performStopScreenShare: Calling onStreamChanged to switch back to camera.');
       onStreamChanged(localStream, 'camera'); 
     } else { 
-      onShareEnded();
+      console.warn('[ScreenShareButton] performStopScreenShare: No localStream (camera) to switch back to. Calling onShareEnded.');
+      onShareEnded(); // Fallback si le flux caméra d'origine n'est pas disponible
     }
-    console.log('Partage d\'écran arrêté.');
+    console.log('[ScreenShareButton] Screen sharing STOPPED.');
   };
 
   useEffect(() => {
-    if (!isSharing && screenStream) {
-      performStopScreenShare(screenStream);
+    console.log(`[ScreenShareButton useEffect for isSharing] isSharing changed to: ${isSharing}. screenStreamRef.current exists: ${!!screenStreamRef.current}`);
+    if (!isSharing && screenStreamRef.current) { 
+      console.log('[ScreenShareButton useEffect for isSharing] Condition met: !isSharing && screenStreamRef.current. Calling performStopScreenShare.');
+      performStopScreenShare(screenStreamRef.current);
     }
-    return () => {
-      if (isSharing && screenStream) { 
-        console.log('Cleanup ScreenShareButton: arrêt du partage d\'écran au démontage.');
-        performStopScreenShare(screenStream);
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Le cleanup de cet effet ne doit pas arrêter le partage si le composant est démonté alors qu'on partage encore.
+    // L'arrêt doit être géré par le changement d'état de isSharing ou un cleanup global du composant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSharing]); 
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { return () => { if(screenStream) performStopScreenShare(screenStream) } }, [screenStream]);
+  // Cleanup global si le composant est démonté alors que le partage est actif.
+  useEffect(() => {
+    const currentScreenStream = screenStreamRef.current; // Capturer la valeur actuelle pour le cleanup
+    return () => {
+      if (isSharing && currentScreenStream) { 
+        console.log('[ScreenShareButton global cleanup useEffect] Component unmounting while sharing. Stopping screen share.');
+        // Attention: setIsSharing(false) ici pourrait ne pas déclencher l'autre useEffect à temps.
+        // Il est plus sûr d'appeler directement performStopScreenShare si on sait qu'il faut arrêter.
+        performStopScreenShare(currentScreenStream); // Arrêter directement le flux
+        // setIsSharing(false); // Peut être redondant ou trop tardif ici
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSharing]); // S'exécute aussi quand isSharing change, pour capturer le bon currentScreenStream si isSharing devient true.
 
   const handleToggleShare = () => {
+    console.log(`[ScreenShareButton] handleToggleShare called. Current isSharing: ${isSharing}`);
     if (isSharing) {
-      setIsSharing(false); 
+      // Si l'utilisateur clique sur notre bouton pour arrêter
+      console.log('[ScreenShareButton] handleToggleShare: User clicked to stop. Setting isSharing to false.');
+      setIsSharing(false); // Ceci va déclencher l'useEffect qui appelle performStopScreenShare
+      // Alternativement, si le flux a déjà été arrêté par le navigateur (onended), isSharing est déjà false.
+      // Et si onended n'a pas encore tiré, on peut forcer l'arrêt des pistes ici :
+      if (screenStreamRef.current) { performStopScreenShare(screenStreamRef.current); }
     } else {
       startScreenShare(); 
     }
   };
   
-  const buttonClassName = `p-2 sm:p-3 rounded-full ${isSharing ? 'bg-minimeet-action-red text-white' : 'bg-gray-200 hover:bg-gray-300 text-minimeet-text-dark'}`;
+  const baseButtonClassName = "p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors";
+  const currentButtonClassName = propButtonClassName 
+    ? `${propButtonClassName} ${isSharing ? 'bg-minimeet-primary text-white' : ''}`
+    : `${baseButtonClassName} ${isSharing ? 'bg-minimeet-primary text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`;
+  const currentIconClassName = propIconClassName || "w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6";
 
   return (
     <button
       onClick={handleToggleShare}
       title={isSharing ? "Arrêter le partage d'écran" : "Partager l'écran"}
-      className={buttonClassName}
+      className={currentButtonClassName}
     >
-      {isSharing ? <IconScreenShareStop /> : <IconScreenShare />}
+      {isSharing ? <IconScreenShareStop className={currentIconClassName} /> : <IconScreenShare className={currentIconClassName} />}
     </button>
   );
 };

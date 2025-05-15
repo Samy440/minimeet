@@ -104,19 +104,30 @@ const ChatBox = ({ roomId }) => {
     e.preventDefault();
     if (!newMessage.trim() || !currentUser) return;
 
-    // Récupérer le full_name du currentUser depuis la table profiles
-    let senderFullName = 'Utilisateur Anonyme'; // Valeur par défaut
+    let senderFullName = 'Utilisateur Anonyme'; // Valeur par défaut initiale
     if (currentUser && currentUser.id) {
+      // Essayer de récupérer le nom complet depuis la table profiles
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name')
         .eq('id', currentUser.id)
         .single();
+
       if (profileError) {
         console.error("Erreur lors de la récupération du profil pour le chat:", profileError);
-      } else if (profile) {
-        senderFullName = profile.full_name;
+        // Si erreur de profil, et qu'on a un email, utiliser le début de l'email
+        if (currentUser.email) {
+          senderFullName = currentUser.email.split('@')[0];
+        } 
+        // Sinon, 'Utilisateur Anonyme' reste par défaut
+      } else if (profile && profile.full_name) {
+        senderFullName = profile.full_name; // Utiliser le nom complet du profil s'il existe et n'est pas vide
+      } else if (currentUser.email) {
+        // Si le profil est récupéré mais full_name est vide/null, ou si le profil lui-même est null (ne devrait pas arriver pour un user valide)
+        // et qu'on a un email, utiliser le début de l'email.
+        senderFullName = currentUser.email.split('@')[0];
       }
+      // Si après tout ça, senderFullName est encore la valeur par défaut et qu'on a pas d'email, 'Utilisateur Anonyme' est conservé.
     }
 
     const messageToSend = {
