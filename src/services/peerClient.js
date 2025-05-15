@@ -3,13 +3,25 @@ import { Peer } from 'peerjs';
 let peer = null;
 let localStreamPeerJs = null; // Non utilisé actuellement, mais pourrait l'être
 
-// Configuration PeerJS - décommentez et ajustez si vous utilisez votre propre serveur PeerJS
+// Configuration PeerJS
 const peerConfig = {
   // host: 'localhost',
   // port: 9000,
   // path: '/myapp',
-  // debug: 3, // 0 (aucun) à 3 (verbeux)
+  debug: 2, // 0 (aucun) à 3 (verbeux). 2 est un bon compromis pour le débogage.
   // secure: true, // Si votre serveur PeerJS utilise HTTPS. Par défaut PeerServer Cloud est sur HTTPS.
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      // Vous devriez ajouter vos propres serveurs TURN ici pour une meilleure fiabilité
+       {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+         credential: 'openrelayproject'
+      }
+    ]
+  }
 };
 
 /**
