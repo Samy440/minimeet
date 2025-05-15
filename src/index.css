@@ -4,24 +4,26 @@
 
 body {
   font-family: 'Inter', sans-serif; /* Police par défaut définie ici */
-  /* Autres styles globaux si nécessaires */
+  /* Considérez de mettre la couleur de fond et de texte par défaut de votre application ici si nécessaire,
+     mais Tailwind les gérera généralement via les classes sur vos composants. 
+     Par exemple, si vous voulez un fond clair par défaut pour toute l'application non stylée autrement:
+     background-color: #F8F9FA; // Corresponds à minimeet-background
+     color: #212529; // Corresponds à minimeet-text-primary 
+     Cependant, il est souvent préférable de l'appliquer sur votre layout principal dans App.jsx
+  */
+  margin: 0; /* Garder la réinitialisation de la marge */
+  /* Les styles suivants de :root étaient redondants ou mieux gérés par Tailwind/navigateur par défaut */
+  /* min-width: 320px; */ /* Tailwind gère le responsive */
+  /* min-height: 100vh; */ /* À appliquer sur #root ou le conteneur principal si nécessaire */
+  /* display: flex; */ /* À appliquer spécifiquement là où c'est nécessaire */
+  /* place-items: center; */ /* À appliquer spécifiquement là où c'est nécessaire */
 }
 
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* Les styles pour a, h1, button sont généralement mieux gérés par les composants Tailwind 
+ou avec @layer components si vous voulez des styles de base pour ces éléments. 
+   Pour l'instant, je les commente pour laisser Tailwind prendre le dessus. */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
+/*
 a {
   font-weight: 500;
   color: #646cff;
@@ -29,14 +31,6 @@ a {
 }
 a:hover {
   color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
 }
 
 h1 {
@@ -75,3 +69,4 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+*/

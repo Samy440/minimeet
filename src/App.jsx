@@ -4,6 +4,7 @@ import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import DashboardPage from './pages/Dashboard';
 import MeetRoomPage from './pages/MeetRoom';
+import NewLandingPage from './pages/NewLandingPage';
 // import { supabase } from './services/supabaseClient'; // Pour la gestion de session future
 
 // Un composant simple pour simuler une page protégée
@@ -25,7 +26,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/meet/:roomId" element={<ProtectedRoute><MeetRoomPage /></ProtectedRoute>} />
-        <Route path="/" element={<ProtectedRoute><Navigate to="/dashboard" replace /></ProtectedRoute>} />
+        <Route path="/" element={<NewLandingPage />} />
       </Routes>
     </Router>
   );

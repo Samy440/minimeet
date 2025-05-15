@@ -13,6 +13,11 @@ const IconArrowLeft = ({ className = "w-6 h-6" }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
   </svg>
 );
+const IconArrowRight = ({ className = "w-6 h-6" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+  </svg>
+);
 const IconCheck = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
@@ -39,7 +44,7 @@ const IconRecord = ({ className = "w-5 h-5" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-4-4h8v-8H8v8z"/></svg>
 );
 const IconRecordStop = ({ className = "w-5 h-5" }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM8 8h8v8H8V8z"/></svg> // Same as Record for now, often a square is used for stop
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM8 8h8v8H8V8z"/></svg>
 );
 const IconLink = ({ className = "w-5 h-5" }) => (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -87,14 +92,17 @@ const MeetRoomPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isJoiningRoom, setIsJoiningRoom] = useState(true);
 
+  // État pour le flux affiché en grand
+  const [mainDisplayedStreamInfo, setMainDisplayedStreamInfo] = useState({ stream: null, id: null, email: null, isLocal: true });
+  const carouselRef = useRef(null);
+
   // États pour l'enregistrement
   const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef(null); // Utiliser useRef pour l'instance de MediaRecorder
-  const recordedChunksRef = useRef([]); // Utiliser useRef pour les chunks
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
   const [downloadLink, setDownloadLink] = useState('');
 
-  // Placeholder pour la notification d'arrivée (à implémenter avec la logique de présence)
-  const [joiningUser, setJoiningUser] = useState(null); // ex: { name: 'Drew Bieber' }
+  const [joiningUser, setJoiningUser] = useState(null);
 
   // Hook pour l'authentification
   useEffect(() => {
@@ -154,8 +162,9 @@ const MeetRoomPage = () => {
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
           console.log('[Effect 1] getUserMedia SUCCESS');
-          cameraStreamRef.current = stream; 
-          setLocalStream(stream); 
+          cameraStreamRef.current = stream;
+          setLocalStream(stream);
+          setMainDisplayedStreamInfo({ stream: stream, id: peerIdToInitialize, email: currentUser.email, isLocal: true });
         })
         .catch(err => {
           console.error('[Effect 1] getUserMedia ERROR:', err);
@@ -194,11 +203,15 @@ const MeetRoomPage = () => {
             console.log('[Effect 1 Cleanup] Stopping cameraStreamRef tracks.');
             cameraStreamRef.current.getTracks().forEach(track => track.stop());
           }
+          if (localStream && localStream !== cameraStreamRef.current && localStream.active) {
+            console.log('[Effect 1 Cleanup] Stopping active localStream (screen share) tracks.');
+            localStream.getTracks().forEach(track => track.stop());
+          }
           console.log('[Effect 1 Cleanup] Destroying PeerJS instance.');
           destroyPeer();
       });
     };
-  }, [currentUser?.id, roomId]);
+  }, [currentUser?.id, currentUser?.email, roomId]);
 
   // 2. Gestion de la présence (Join Room) et appels initiaux
   useEffect(() => {
@@ -208,6 +221,7 @@ const MeetRoomPage = () => {
       if (!roomId) reason += 'roomId is null; ';
       if (!peerInstance?.id) reason += 'peerInstance.id is null; ';
       if (!localStream) reason += 'localStream is null; ';
+      console.log(reason);
       return;
     }
     console.log(`[Effect 2] START: Joining room ${roomId} for user ${currentUser.id}, peer ${peerInstance.id}`);
@@ -221,7 +235,6 @@ const MeetRoomPage = () => {
       }
       
       try {
-        // Ajout: Tentative de suppression de toute entrée conflictuelle basée sur peer_id seul
         try {
           console.log(`[Effect 2] Attempting to DELETE any existing participant record for peer_id: ${peerInstance.id}`);
           const { error: deleteError } = await supabase
@@ -237,7 +250,6 @@ const MeetRoomPage = () => {
         } catch (delErr) {
            console.warn('[Effect 2] Exception during pre-emptive delete by peer_id:', delErr);
         }
-        // Fin de l'ajout
 
         console.log('[Effect 2] Attempting to UPSERT participant record.');
         const { error: upsertError } = await supabase
@@ -249,7 +261,7 @@ const MeetRoomPage = () => {
             user_email: currentUser.email,
             status: 'online',
             last_seen: new Date().toISOString(),
-          }, { onConflict: 'room_id, user_id' }); // onConflict sur (room_id, user_id) est correct
+          }, { onConflict: 'room_id, user_id' });
 
         if (!isMounted) return;
         if (upsertError) {
@@ -314,19 +326,25 @@ const MeetRoomPage = () => {
           let updatedParticipants = [...currentParticipants];
           if (eventType === 'INSERT') {
             if (!updatedParticipants.find(p => p.peer_id === newRecord.peer_id)) updatedParticipants.push(newRecord);
-            if (newRecord.peer_id !== peerInstance.id && newRecord.status === 'online' && newRecord.peer_id) initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
           } else if (eventType === 'UPDATE') {
             updatedParticipants = updatedParticipants.map(p => p.peer_id === newRecord.peer_id ? newRecord : p);
-            if (newRecord.peer_id !== peerInstance.id) {
-                if (newRecord.status === 'offline' && connectedPeers[newRecord.peer_id]) connectedPeers[newRecord.peer_id].close();
-                else if (newRecord.status === 'online' && oldRecord?.status !== 'online' && !connectedPeers[newRecord.peer_id]) initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
-            }
           } else if (eventType === 'DELETE') {
             updatedParticipants = updatedParticipants.filter(p => p.peer_id !== oldRecord.peer_id);
-            if (oldRecord.peer_id !== peerInstance.id && oldRecord.peer_id && connectedPeers[oldRecord.peer_id]) connectedPeers[oldRecord.peer_id].close();
           }
-          return updatedParticipants.filter(p => p.status === 'online' && p.peer_id !== peerInstance?.id);
+          return updatedParticipants;
         });
+
+        if (eventType === 'INSERT' && newRecord.peer_id !== peerInstance.id && newRecord.status === 'online' && newRecord.peer_id) {
+          initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
+        } else if (eventType === 'UPDATE' && newRecord.peer_id !== peerInstance.id) {
+          if (newRecord.status === 'offline' && connectedPeers[newRecord.peer_id]) {
+            connectedPeers[newRecord.peer_id].close();
+          } else if (newRecord.status === 'online' && oldRecord?.status !== 'online' && !connectedPeers[newRecord.peer_id]) {
+            initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
+          }
+        } else if (eventType === 'DELETE' && oldRecord.peer_id !== peerInstance.id && oldRecord.peer_id && connectedPeers[oldRecord.peer_id]) {
+          connectedPeers[oldRecord.peer_id].close();
+        }
       })
       .subscribe(status => {
         if (status === 'SUBSCRIBED') console.log(`[Effect 3] Successfully subscribed to ${channelName}`);
@@ -345,35 +363,49 @@ const MeetRoomPage = () => {
     const currentPeer = getPeer();
     if (!currentPeer || !localStream) return;
     console.log(`[Effect 4] START: Setting up incoming call handler for peer ${currentPeer.id}`);
+    
     const handleIncomingCall = call => {
       console.log(`[Effect 4] Incoming call from ${call.peer}`);
       call.answer(localStream);
-      const pInfo = roomParticipantsData.find(p => p.peer_id === call.peer);
-      const pEmail = pInfo?.user_email || 'Pair distant';
+      
+      const participantInfo = roomParticipantsData.find(p => p.peer_id === call.peer);
+      const participantEmail = participantInfo?.user_email || 'Pair distant';
+      
       call.on('stream', remoteStream => { 
-        console.log(`[Effect 4] Stream received from ${call.peer}`);
-        if (!remoteStreams.find(s => s.id === call.peer)) {
-          setRemoteStreams(prev => [...prev, { id: call.peer, stream: remoteStream, email: pEmail }]);
-          setConnectedPeers(prev => ({ ...prev, [call.peer]: call }));
-        }
+        console.log(`[Effect 4] Stream received from ${call.peer} (${participantEmail})`);
+        setRemoteStreams(prev => {
+          if (prev.find(s => s.id === call.peer)) return prev;
+          return [...prev, { id: call.peer, stream: remoteStream, email: participantEmail }];
+        });
+        setConnectedPeers(prev => ({ ...prev, [call.peer]: call }));
       });
+      
       call.on('close', () => { 
         console.log(`[Effect 4] Call with ${call.peer} closed.`);
         setRemoteStreams(prev => prev.filter(s => s.id !== call.peer)); 
         setConnectedPeers(prev => { const n = {...prev}; delete n[call.peer]; return n; });
+        if (mainDisplayedStreamInfo.id === call.peer && localStream) {
+            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+        }
       });
+      
       call.on('error', err => { 
         console.error(`[Effect 4] Error on call with ${call.peer}:`, err); 
         setRemoteStreams(prev => prev.filter(s => s.id !== call.peer));
         setConnectedPeers(prev => { const n = {...prev}; delete n[call.peer]; return n; });
+        if (mainDisplayedStreamInfo.id === call.peer && localStream) {
+             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+        }
       });
     };
+    
     currentPeer.on('call', handleIncomingCall);
+    
     return () => { 
       console.log(`[Effect 4] CLEANUP: Removing call handler for peer ${currentPeer.id}`); 
       if (currentPeer) currentPeer.off('call', handleIncomingCall); 
     };
-  }, [localStream, roomParticipantsData]);
+  }, [localStream, roomParticipantsData, mainDisplayedStreamInfo, currentUser?.id, currentUser?.email]);
 
   // Fonction pour appeler un autre pair
   const initiateCallToPeer = (remotePeerId, remoteUserEmail = 'Pair distant') => {
@@ -395,19 +427,26 @@ const MeetRoomPage = () => {
       setConnectedPeers(prev => ({ ...prev, [remotePeerId]: call })); 
       call.on('stream', (remoteStream) => {
         console.log(`[initiateCallToPeer] Stream received from ${remotePeerId}`);
-        if (!remoteStreams.find(s => s.id === remotePeerId)) {
-          setRemoteStreams(prev => [...prev, { id: remotePeerId, stream: remoteStream, email: remoteUserEmail }]);
-        }
+        setRemoteStreams(prev => {
+            if (prev.find(s => s.id === remotePeerId)) return prev;
+            return [...prev, { id: remotePeerId, stream: remoteStream, email: remoteUserEmail }];
+        });
       });
       call.on('close', () => {
         console.log(`[initiateCallToPeer] Call with ${remotePeerId} closed.`);
         setRemoteStreams(prev => prev.filter(s => s.id !== remotePeerId));
         setConnectedPeers(prev => { const n = {...prev}; delete n[remotePeerId]; return n; });
+        if (mainDisplayedStreamInfo.id === remotePeerId && localStream) {
+            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+        }
       });
       call.on('error', (err) => {
         console.error(`[initiateCallToPeer] Error on outgoing call to ${remotePeerId}:`, err);
         setRemoteStreams(prev => prev.filter(s => s.id !== remotePeerId));
         setConnectedPeers(prev => { const n = {...prev}; delete n[remotePeerId]; return n; });
+        if (mainDisplayedStreamInfo.id === remotePeerId && localStream) {
+             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+        }
       });
     } else {
       console.error(`[initiateCallToPeer] Failed to initiate call to ${remotePeerId}. callPeer returned null.`);
@@ -416,12 +455,17 @@ const MeetRoomPage = () => {
 
   // Fonctions pour le partage d'écran
   const handleActiveStreamChange = (newActiveStream, type) => {
-    console.log(`[handleActiveStreamChange] Type: ${type}`);
+    console.log(`[handleActiveStreamChange] Type: ${type}, new stream has ${newActiveStream?.getTracks().length} tracks.`);
     const currentActiveCameraStream = cameraStreamRef.current;
-    console.log(`Changement de flux actif vers: ${type}`);
+    let streamToDisplayInMain, idToDisplay, emailToDisplay, isLocalToDisplay;
 
     if (type === 'screen') {
       setLocalStream(newActiveStream);
+      streamToDisplayInMain = newActiveStream;
+      idToDisplay = currentUser.id + '_screen';
+      emailToDisplay = currentUser.email;
+      isLocalToDisplay = true;
+
       Object.values(connectedPeers).forEach(call => {
         const videoSender = call.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
         if (videoSender && newActiveStream.getVideoTracks()[0]) {
@@ -432,16 +476,21 @@ const MeetRoomPage = () => {
         if (audioSender) {
           if (newActiveStream.getAudioTracks()[0]) {
             audioSender.replaceTrack(newActiveStream.getAudioTracks()[0])
-              .catch(err => console.error('Erreur replaceTrack audio (screen):', err));
+              .catch(err => console.error('Erreur replaceTrack audio (screen with audio):', err));
           } else if (currentActiveCameraStream?.getAudioTracks()[0]) {
             audioSender.replaceTrack(currentActiveCameraStream.getAudioTracks()[0])
-              .catch(err => console.error('Erreur replaceTrack audio (camera fallback):', err));
+              .catch(err => console.error('Erreur replaceTrack audio (camera fallback for screen):', err));
           }
         }
       });
     } else if (type === 'camera') {
       if (currentActiveCameraStream) {
         setLocalStream(currentActiveCameraStream);
+        streamToDisplayInMain = currentActiveCameraStream;
+        idToDisplay = currentUser.id;
+        emailToDisplay = currentUser.email;
+        isLocalToDisplay = true;
+
         Object.values(connectedPeers).forEach(call => {
           const videoSender = call.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
           if (videoSender && currentActiveCameraStream.getVideoTracks()[0]) {
@@ -454,7 +503,25 @@ const MeetRoomPage = () => {
               .catch(err => console.error('Erreur replaceTrack audio (camera):', err));
           }
         });
+      } else {
+        console.error("Cannot switch to camera: cameraStreamRef.current is null");
+        return;
       }
+    } else {
+        console.error("Unknown type for handleActiveStreamChange:", type);
+        return;
+    }
+    
+    const localCameraId = currentUser.id;
+    const localScreenId = currentUser.id + '_screen';
+
+    if (mainDisplayedStreamInfo.id === localCameraId || mainDisplayedStreamInfo.id === localScreenId || type === 'screen') {
+        setMainDisplayedStreamInfo({
+            stream: streamToDisplayInMain,
+            id: idToDisplay,
+            email: emailToDisplay,
+            isLocal: isLocalToDisplay
+        });
     }
   };
 
@@ -464,21 +531,27 @@ const MeetRoomPage = () => {
     if (currentActiveCameraStream && localStream !== currentActiveCameraStream) {
       console.log('Fallback: Partage écran terminé, retour caméra.');
       handleActiveStreamChange(currentActiveCameraStream, 'camera');
+      setMainDisplayedStreamInfo({ stream: currentActiveCameraStream, id: currentUser.id, email: currentUser.email, isLocal: true });
     } else if (!currentActiveCameraStream) {
       console.warn('Partage écran terminé, mais flux caméra original non trouvé.');
       Object.values(connectedPeers).forEach(call => {
         const videoSender = call.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-        if (videoSender) videoSender.replaceTrack(null).catch(e => console.warn("Can't send null track", e));
+        if (videoSender) videoSender.replaceTrack(null).catch(e => console.warn("Can't send null track on screen share end", e));
       });
       setLocalStream(null);
+      if (mainDisplayedStreamInfo.id === currentUser.id + '_screen') {
+        setMainDisplayedStreamInfo({ stream: null, id: null, email: null, isLocal: true });
+      }
     }
   };
 
   // Fonctions pour l'enregistrement
   const startRecording = () => {
     console.log('[startRecording] Called');
-    if (!localStream || localStream.getTracks().length === 0) {
-      alert('Aucun flux média disponible pour l\'enregistrement.');
+    const streamToRecord = mainDisplayedStreamInfo.stream;
+
+    if (!streamToRecord || streamToRecord.getTracks().length === 0) {
+      alert('Aucun flux média principal disponible pour l\'enregistrement.');
       return;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -491,12 +564,12 @@ const MeetRoomPage = () => {
 
     try {
       const options = { mimeType: 'video/webm; codecs=vp9' };
-      mediaRecorderRef.current = new MediaRecorder(localStream, options);
+      mediaRecorderRef.current = new MediaRecorder(streamToRecord, options);
     } catch (e1) {
       console.warn('MediaRecorder avec vp9 échoué, essai avec vp8:', e1.message);
       try {
         const options = { mimeType: 'video/webm; codecs=vp8' }; 
-        mediaRecorderRef.current = new MediaRecorder(localStream, options);
+        mediaRecorderRef.current = new MediaRecorder(streamToRecord, options);
       } catch (e2) {
          console.error('MediaRecorder avec vp8 a aussi échoué:', e2.message);
          alert("Impossible de démarrer l'enregistrement. Format non supporté par le navigateur.");
@@ -534,7 +607,7 @@ const MeetRoomPage = () => {
         console.warn('Aucun enregistrement en cours à arrêter.');
     }
   };
-
+  
   const handleToggleRecording = () => { if (isRecording) stopRecording(); else startRecording(); };
   const handleLeaveRoom = async () => { console.log('[handleLeaveRoom] Leaving room...'); if (isRecording) stopRecording(); navigate('/dashboard'); };
   
@@ -547,7 +620,7 @@ const MeetRoomPage = () => {
       setIsMicMuted(!targetTrackEnabledState); 
       console.log(`[toggleMic] Mic audioTrack.enabled now: ${audioTrack.enabled}. New UI isMicMuted: ${!targetTrackEnabledState}`);
     } else {
-      console.warn('[toggleMic] No audio track found or cameraStreamRef not ready.');
+      console.warn('[toggleMic] No audio track found on cameraStreamRef or cameraStreamRef not ready.');
     }
   };
   
@@ -559,17 +632,37 @@ const MeetRoomPage = () => {
       videoTrack.enabled = targetTrackEnabledState;
       setIsCamOff(!targetTrackEnabledState); 
       console.log(`[toggleCam] Cam videoTrack.enabled now: ${videoTrack.enabled}. New UI isCamOff: ${!targetTrackEnabledState}`);
-      if (localStream !== cameraStreamRef.current) {
-         console.log("[toggleCam] Camera toggled while screen sharing. Change will apply to camera stream, not screen share.");
+      
+      if (localStream === cameraStreamRef.current) {
+        if (!videoTrack.enabled && mainDisplayedStreamInfo.id === currentUser.id) {
+          console.log("[toggleCam] Camera (main display) turned off.");
+        }
+      } else {
+         console.log("[toggleCam] Camera toggled while screen sharing. Change will apply to camera stream, not the active local (screen) stream.");
       }
+
     } else {
-      console.warn('[toggleCam] No video track found or cameraStreamRef not ready.');
+      console.warn('[toggleCam] No video track found on cameraStreamRef or cameraStreamRef not ready.');
     }
   };
 
   const handleCopyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => alert('Lien copié !')).catch(err => console.error(err)); };
   const handleAcceptJoin = () => { if (joiningUser) { console.log(`User ${joiningUser.name} accepted.`); setJoiningUser(null); } };
   const handleRejectJoin = () => { if (joiningUser) { console.log(`User ${joiningUser.name} rejected.`); setJoiningUser(null); } };
+
+  // Fonction pour changer le flux principal affiché
+  const handleThumbnailClick = (streamInfo) => {
+    console.log("Thumbnail clicked:", streamInfo.id, "Current main:", mainDisplayedStreamInfo.id);
+    setMainDisplayedStreamInfo(streamInfo);
+  };
+
+  // Fonction pour faire défiler le carrousel
+  const scrollCarousel = (direction) => {
+    if (carouselRef.current) {
+      const scrollAmount = direction === 'left' ? -carouselRef.current.offsetWidth * 0.75 : carouselRef.current.offsetWidth * 0.75;
+      carouselRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   if (isLoadingUser) {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Vérification de l'utilisateur...</p></div>;
@@ -580,23 +673,38 @@ const MeetRoomPage = () => {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Redirection...</p></div>; 
   }
 
-  if (!peerInstance) {
+  if (!peerInstance && !isJoiningRoom) {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Initialisation PeerJS...</p></div>;
   }
-  if (!localStream) {
+  if (!localStream && !isJoiningRoom && peerInstance) {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Accès caméra/micro...</p></div>;
   }
-
   if (isJoiningRoom) {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Connexion à la salle en cours...</p></div>;
   }
-
   if (isLoading) { 
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Chargement final des données de la salle...</p></div>;
   }
   
-  const onlineParticipantsForDisplay = roomParticipantsData.filter(p => p.status === 'online' && p.peer_id !== peerInstance?.id);
   const currentUserShortName = currentUser.email?.split('@')[0] || 'Vous';
+  const onlineParticipantsForSidePanel = roomParticipantsData.filter(p => p.status === 'online' && p.peer_id !== peerInstance?.id);
+
+  // Préparer les éléments pour le carrousel
+  const carouselItems = [];
+  remoteStreams.forEach(remote => {
+    if (mainDisplayedStreamInfo.id !== remote.id) {
+      carouselItems.push({ ...remote, isLocal: false });
+    }
+  });
+  const localStreamId = localStream === cameraStreamRef.current ? currentUser.id : currentUser.id + '_screen';
+  if (localStream && mainDisplayedStreamInfo.id !== localStreamId) {
+    carouselItems.push({
+      stream: localStream,
+      id: localStreamId,
+      email: currentUser.email,
+      isLocal: true
+    });
+  }
 
   return (
     <div className="w-screen h-screen flex flex-col bg-minimeet-background font-sans overflow-hidden">
@@ -619,34 +727,86 @@ const MeetRoomPage = () => {
       </header>
 
       <div className="flex-grow flex flex-col lg:flex-row overflow-hidden">
-        <main className="flex-grow flex flex-col p-3 sm:p-4 relative bg-minimeet-background lg:overflow-y-auto">
-          <div className="flex-grow bg-black rounded-minimeet-lg flex items-center justify-center text-white relative min-h-[200px] sm:min-h-[300px] md:min-h-[400px]">
-            {localStream ? (
-                <VideoPlayer stream={localStream} isLocal={true} muted={true} className="object-contain w-full h-full" />
-            ) : (
-                <p className="text-minimeet-text-muted">Caméra/flux local non disponible...</p>
-            )}
-            <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2.5 py-1 rounded-minimeet-md text-sm font-medium">{currentUserShortName} (Vous)</div>
+        <main className="flex-grow flex flex-col p-3 sm:p-4 bg-minimeet-background lg:overflow-y-auto">
+          <div className="flex-grow">
+            <div className="flex-grow flex items-start justify-center">
+              <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-xl flex items-center justify-center text-white relative mt-4 lg:max-w-5xl xl:max-w-6xl mx-auto">
+                {mainDisplayedStreamInfo.stream && mainDisplayedStreamInfo.stream.active ? (
+                    <VideoPlayer 
+                      stream={mainDisplayedStreamInfo.stream} 
+                      isLocal={mainDisplayedStreamInfo.isLocal} 
+                      muted={mainDisplayedStreamInfo.isLocal || !mainDisplayedStreamInfo.isLocal} 
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center text-minimeet-text-muted">
+                        <IconCamOff className="w-16 h-16 opacity-50 mb-2"/>
+                        <p >{mainDisplayedStreamInfo.id ? `Le flux de ${mainDisplayedStreamInfo.email?.split('@')[0] || 'participant'} n'est pas disponible.` : 'Aucun flux à afficher...'}</p>
+                    </div>
+                )}
+                <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2.5 py-1 rounded-minimeet-md text-sm font-medium">
+                  {mainDisplayedStreamInfo.email?.split('@')[0] || (mainDisplayedStreamInfo.id || '').substring(0,8)}
+                  {mainDisplayedStreamInfo.isLocal && ' (Vous)'}
+                </div>
+              </div>
+            </div>
           </div>
           
-          <div className="h-28 sm:h-32 md:h-36 flex-shrink-0 mt-3 space-x-2 sm:space-x-3 overflow-x-auto p-1.5 bg-minimeet-surface/70 backdrop-blur-sm rounded-minimeet-lg shadow-minimeet-sm">
-            {remoteStreams.length > 0 ? (
-                remoteStreams.map(remote => (
-                <div key={remote.id} className="h-full aspect-video bg-black rounded-minimeet-md overflow-hidden relative flex-shrink-0 shadow-md">
-                    <VideoPlayer stream={remote.stream} isLocal={false} className="object-cover w-full h-full" />
-                    <div className="absolute bottom-1 left-1.5 bg-black/60 text-white px-1.5 py-0.5 rounded-minimeet-sm text-xs truncate max-w-[calc(100%-12px)]">{remote.email?.split('@')[0] || remote.id.substring(0,6)}</div>
-                </div>
-                ))
-            ) : (
-                <div className="h-full flex items-center justify-center w-full">
-                    <p className="text-sm text-minimeet-text-muted italic">
-                        {isJoiningRoom || isLoading ? "Recherche de participants..." : "Aucun autre participant pour le moment."}
-                    </p>
-                </div>
-            )}
-          </div>
-
-          <div className="absolute bottom-4 xs:bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 z-10 w-max max-w-[calc(100%-16px)] xs:max-w-none">
+          {(carouselItems.length > 0 || (remoteStreams.length === 0 && !isLoading && !isJoiningRoom) ) && (
+            <div className="relative flex-shrink-0 mt-3">
+              {carouselItems.length > 1 && (
+                <>
+                  <button 
+                    onClick={() => scrollCarousel('left')}
+                    className="absolute left-0.5 top-1/2 -translate-y-1/2 z-10 p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 text-white rounded-full focus:outline-none shadow-md"
+                    aria-label="Précédent"
+                  >
+                    <IconArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <button 
+                    onClick={() => scrollCarousel('right')}
+                    className="absolute right-0.5 top-1/2 -translate-y-1/2 z-10 p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 text-white rounded-full focus:outline-none shadow-md"
+                    aria-label="Suivant"
+                  >
+                    <IconArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                </>
+              )}
+              <div 
+                ref={carouselRef}
+                className="h-28 sm:h-32 md:h-36 flex items-center space-x-2 sm:space-x-3 overflow-x-auto px-1 py-1.5 bg-minimeet-surface/50 backdrop-blur-sm rounded-minimeet-lg shadow-minimeet-sm scrollbar-hide"
+              >
+                {carouselItems.length > 0 ? (
+                    carouselItems.map(item => (
+                    <div 
+                        key={item.id} 
+                        className="h-full aspect-video bg-black rounded-minimeet-md overflow-hidden relative flex-shrink-0 shadow-md cursor-pointer hover:ring-2 hover:ring-minimeet-primary focus:outline-none focus:ring-2 focus:ring-minimeet-primary"
+                        onClick={() => handleThumbnailClick(item)}
+                        tabIndex={0}
+                        onKeyPress={(e) => e.key === 'Enter' && handleThumbnailClick(item)}
+                    >
+                        <VideoPlayer 
+                            stream={item.stream} 
+                            isLocal={item.isLocal} 
+                            muted={true}
+                        />
+                        <div className="absolute bottom-1 left-1.5 bg-black/60 text-white px-1.5 py-0.5 rounded-minimeet-sm text-xs truncate max-w-[calc(100%-12px)]">
+                            {item.email?.split('@')[0] || item.id.substring(0,8)}
+                            {item.isLocal && ' (Vous)'}
+                        </div>
+                    </div>
+                    ))
+                ) : (
+                    <div className="h-full flex items-center justify-center w-full">
+                        <p className="text-sm text-minimeet-text-muted italic">
+                            {isJoiningRoom || isLoading ? "Recherche de participants..." : "Aucun autre participant pour le moment."}
+                        </p>
+                    </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-auto pt-3 sm:pt-4 flex items-center justify-center w-full z-10 flex-shrink-0">
             <div className="flex items-center flex-wrap justify-center gap-1.5 xs:gap-2 sm:gap-3 bg-minimeet-dark-panel/80 backdrop-blur-md p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full shadow-minimeet-lg">
                 <button onClick={toggleMic} title={isMicMuted ? "Activer micro" : "Couper micro"} className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${isMicMuted ? 'bg-minimeet-error text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}>{isMicMuted ? <IconMicOff className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/> : <IconMicOn className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>}</button>
                 <button onClick={toggleCam} title={isCamOff ? "Activer caméra" : "Désactiver caméra"} className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${isCamOff ? 'bg-minimeet-error text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}>{isCamOff ? <IconCamOff className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/> : <IconCamOn className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>}</button>
@@ -659,61 +819,80 @@ const MeetRoomPage = () => {
                 />
                 <button 
                     onClick={handleToggleRecording} 
-                    title={isRecording ? "Arrêter l'enregistrement" : "Démarrer l'enregistrement"} 
+                    title={isRecording ? "Arrêter l'enregistrement" : "Démarrer l'enregistrement (flux principal)"} 
                     className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${isRecording ? 'bg-minimeet-primary text-white animate-pulse' : 'bg-white/20 hover:bg-white/30 text-white'}`}>
                     {isRecording ? <IconRecordStop className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/> : <IconRecord className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>}
                 </button>
                 <button 
                     onClick={() => setActiveTab('chat')} 
                     title="Afficher le Chat" 
-                    className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${activeTab === 'chat' ? 'bg-minimeet-primary text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}>
+                    className={`hidden sm:flex p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${activeTab === 'chat' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
                     <IconChatBubbleLeftEllipsis className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
                 <button 
                     onClick={() => setActiveTab('participants')} 
                     title="Afficher les Participants" 
-                    className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}>
+                    className={`hidden sm:flex p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
                     <IconUsers className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
-                <button 
+                 <button 
                     onClick={handleLeaveRoom}
                     title="Quitter la réunion"
                     className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-minimeet-error hover:bg-red-700 text-white transition-colors">
                     <IconPhoneHangUp className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
                 {downloadLink && (
-                  <a href={downloadLink} download={`minimeet-recording-${roomId}.webm`} title="Télécharger l'enregistrement" className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-minimeet-success hover:bg-green-600 text-white transition-colors flex items-center justify-center">
+                  <a href={downloadLink} download={`minimeet-recording-${roomId}-${new Date().toISOString().slice(0,10)}.webm`} title="Télécharger l'enregistrement" className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-minimeet-success hover:bg-green-600 text-white transition-colors flex items-center justify-center">
                     <IconDownload className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                   </a>
                 )}
-                <button onClick={handleCopyLink} title="Copier le lien de la réunion" className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center">
+                <button onClick={handleCopyLink} title="Copier le lien de la réunion" className="hidden lg:flex p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-white/20 hover:bg-white/30 text-white transition-colors items-center justify-center">
                     <IconLink className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
-                 <button title="Paramètres (bientôt)" className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center cursor-not-allowed opacity-70">
+                 <button title="Paramètres (bientôt)" className="hidden lg:flex p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-white/20 hover:bg-white/30 text-white transition-colors items-center justify-center cursor-not-allowed opacity-70">
                     <IconSettings className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
             </div>
           </div>
         </main>
-        <aside className="w-full lg:w-[360px] xl:w-[400px] bg-minimeet-surface flex-shrink-0 flex flex-col border-l border-minimeet-border lg:h-full lg:overflow-y-auto">
-          {activeTab === 'chat' && roomId && <ChatBox roomId={roomId} />}
-          {activeTab === 'participants' && (
-              <div className="p-4">
-                <p className="text-minimeet-text-primary font-semibold mb-3">Participants ({1 + onlineParticipantsForDisplay.length})</p>
+        <aside className={`w-full lg:w-[320px] xl:w-[360px] bg-minimeet-surface flex-shrink-0 flex flex-col border-l border-minimeet-border lg:h-full lg:overflow-y-auto ${activeTab === 'none' && 'hidden lg:flex'}`}>
+           <div className="p-3 border-b border-minimeet-border flex lg:hidden items-center justify-center space-x-2">
+                <button 
+                    onClick={() => setActiveTab(activeTab === 'chat' ? 'none' : 'chat')} 
+                    title={activeTab === 'chat' ? "Masquer le Chat" : "Afficher le Chat"}
+                    className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'chat' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
+                    <IconChatBubbleLeftEllipsis className="w-5 h-5 mx-auto"/>
+                </button>
+                <button 
+                    onClick={() => setActiveTab(activeTab === 'participants' ? 'none' : 'participants')} 
+                    title={activeTab === 'participants' ? "Masquer les Participants" : "Afficher les Participants"}
+                    className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
+                    <IconUsers className="w-5 h-5 mx-auto"/>
+                </button>
+            </div>
+
+          {activeTab === 'chat' && roomId && currentUser && <ChatBox roomId={roomId} currentUser={currentUser} />}
+          {activeTab === 'participants' && currentUser && (
+              <div className="p-4 flex-grow">
+                <p className="text-minimeet-text-primary font-semibold mb-3">Participants ({1 + onlineParticipantsForSidePanel.length})</p>
                  <ul className="space-y-1.5">
-                    <li className="text-minimeet-text-primary text-sm font-medium">{currentUserShortName} (Vous)</li>
-                  {onlineParticipantsForDisplay.map(p => (
-                    <li key={p.peer_id} className="text-minimeet-text-secondary text-sm">
-                      {p.user_email?.split('@')[0] || p.peer_id.substring(0,8)}...
+                    <li className="text-minimeet-text-primary text-sm font-medium flex items-center">
+                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        {currentUserShortName} (Vous)
+                    </li>
+                  {onlineParticipantsForSidePanel.map(p => (
+                    <li key={p.peer_id} className="text-minimeet-text-secondary text-sm flex items-center">
+                       <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                      {p.user_email?.split('@')[0] || p.peer_id.substring(0,8)}
                     </li>
                   ))}
-                  {onlineParticipantsForDisplay.length === 0 && <li className="text-sm text-minimeet-text-muted italic">Vous êtes seul pour le moment.</li>}
+                  {onlineParticipantsForSidePanel.length === 0 && !isLoading && <li className="text-sm text-minimeet-text-muted italic mt-2">Vous êtes seul pour le moment.</li>}
                 </ul>
               </div>
             )}
-           {activeTab !== 'chat' && activeTab !== 'participants' && 
-             <div className="p-4 flex-grow flex items-center justify-center">
-                <p className="text-minimeet-text-muted">Sélectionnez un onglet</p>
+           {activeTab === 'none' && 
+             <div className="p-4 flex-grow flex items-center justify-center lg:hidden">
+                <p className="text-minimeet-text-muted text-sm">Affichez le chat ou les participants.</p>
              </div>
             }
         </aside>

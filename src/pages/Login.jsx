@@ -16,7 +16,7 @@ const LoginPage = () => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
       setError(error.message);
     } finally {
