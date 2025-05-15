@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 const DashboardPage = () => {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
+  const [userFullName, setUserFullName] = useState('');
   const [newRoomId, setNewRoomId] = useState('');
   const [joinRoomId, setJoinRoomId] = useState('');
   const [pastMeetings, setPastMeetings] = useState([]);
@@ -25,6 +26,7 @@ const DashboardPage = () => {
         
         if (session && session.user) {
           setCurrentUser(session.user);
+          fetchUserProfile(session.user.id);
         } else {
           // Si pas de session, essayer getUser pour voir si une session stockée peut être récupérée
           const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -33,6 +35,7 @@ const DashboardPage = () => {
           }
           if (user) {
             setCurrentUser(user);
+            fetchUserProfile(user.id);
           } else {
             navigate('/login');
           }
@@ -51,6 +54,11 @@ const DashboardPage = () => {
       console.log('Auth event:', event, session);
       const user = session?.user ?? null;
       setCurrentUser(user);
+      if (user) {
+        fetchUserProfile(user.id);
+      } else {
+        setUserFullName('');
+      }
       if (!user && event !== 'INITIAL_SESSION') { // Ne pas rediriger sur INITIAL_SESSION si user est null au début
         // Rediriger seulement si l'utilisateur se déconnecte explicitement ou si la session expire
         if(event === 'SIGNED_OUT' || event === 'USER_DELETED' || event === 'TOKEN_REFRESHED_ERROR') {
@@ -75,6 +83,30 @@ const DashboardPage = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  const fetchUserProfile = async (userId) => {
+    if (!userId) return;
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single();
+      if (error) {
+        console.warn("Dashboard: Erreur lors de la récupération du profil:", error.message);
+        setUserFullName('');
+      } else if (profile) {
+        setUserFullName(profile.full_name || '');
+        console.log("Dashboard: Profil récupéré, full_name:", profile.full_name);
+      } else {
+        console.log("Dashboard: Profil non trouvé pour l\'utilisateur:", userId);
+        setUserFullName('');
+      }
+    } catch (e) {
+      console.error("Dashboard: Exception lors de la récupération du profil:", e);
+      setUserFullName('');
+    }
+  };
 
   const fetchPastMeetings = async () => {
     if (!currentUser) return;
@@ -166,7 +198,7 @@ const DashboardPage = () => {
       <header className="mb-10 flex justify-between items-center">
         <h1 className="text-4xl font-bold text-minimeet-primary-accent">MiniMeet</h1>
         <div className="flex items-center">
-          {currentUser && <p className="mr-4 text-minimeet-text-medium">Bonjour, {currentUser.email?.split('@')[0] || 'Utilisateur'} !</p>}
+          {currentUser && <p className="mr-4 text-minimeet-text-medium">Bonjour, {userFullName || currentUser.email?.split('@')[0] || 'Utilisateur'} !</p>}
           <button 
             onClick={handleLogout} 
             className="px-4 py-2 bg-minimeet-action-red text-white rounded-minimeet-button hover:bg-minimeet-action-red/90 transition-colors duration-150"

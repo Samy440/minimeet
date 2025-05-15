@@ -40,7 +40,7 @@ const ChatBox = ({ roomId }) => {
       if (!roomId) return;
       const { data, error } = await supabase
         .from('messages')
-        .select('id, room_id, sender_id, content, created_at')
+        .select('id, room_id, sender_id, content, created_at, sender_full_name')
         .eq('room_id', roomId)
         .order('created_at', { ascending: true });
 
@@ -51,7 +51,7 @@ const ChatBox = ({ roomId }) => {
       } else {
         const transformedData = data.map(msg => ({
           ...msg,
-          sender: { email: msg.sender_id }
+          sender: { fullName: msg.sender_full_name || msg.sender_id }
         }));
         setMessages(transformedData || []);
       }
@@ -76,13 +76,12 @@ const ChatBox = ({ roomId }) => {
         },
         async (payload) => {
           console.log('Nouveau message reçu (payload):', payload);
-          // Pour l'instant, on affiche sender_id. La récupération de l'email doit être revue avec la structure DB.
-          const newMessageWithSenderId = {
+          const newMessageData = {
             ...payload.new,
-            sender: { email: payload.new.sender_id } // Affichera l'ID en attendant une solution pour l'email
+            sender: { fullName: payload.new.sender_full_name || payload.new.sender_id }
           };
           // @ts-ignore TODO: typings pour sender
-          setMessages(prevMessages => [...prevMessages, newMessageWithSenderId]);
+          setMessages(prevMessages => [...prevMessages, newMessageData]);
         }
       )
       .subscribe();
@@ -105,10 +104,26 @@ const ChatBox = ({ roomId }) => {
     e.preventDefault();
     if (!newMessage.trim() || !currentUser) return;
 
+    // Récupérer le full_name du currentUser depuis la table profiles
+    let senderFullName = 'Utilisateur Anonyme'; // Valeur par défaut
+    if (currentUser && currentUser.id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', currentUser.id)
+        .single();
+      if (profileError) {
+        console.error("Erreur lors de la récupération du profil pour le chat:", profileError);
+      } else if (profile) {
+        senderFullName = profile.full_name;
+      }
+    }
+
     const messageToSend = {
       room_id: roomId,
       sender_id: currentUser.id,
       content: newMessage.trim(),
+      sender_full_name: senderFullName // Utiliser le nom complet récupéré
     };
 
     const { error: insertError } = await supabase.from('messages').insert([messageToSend]);
@@ -150,7 +165,7 @@ const ChatBox = ({ roomId }) => {
               }`}
             >
               <p className="text-xs font-semibold mb-0.5">
-                {msg.sender_id === currentUser.id ? 'Vous' : (msg.sender?.email?.split('@')[0] || 'Anonyme')}
+                {msg.sender_id === currentUser.id ? 'Vous' : (msg.sender?.fullName || 'Anonyme')}
               </p>
               <p className="text-sm">{msg.content}</p>
               <p className={`text-xs opacity-70 mt-1 text-right ${msg.sender_id === currentUser.id ? 'text-gray-50' : 'text-gray-500'}`}>

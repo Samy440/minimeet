@@ -6,6 +6,7 @@ import { initializePeer, getPeer, callPeer, destroyPeer } from '../services/peer
 import VideoPlayer from '../components/VideoPlayer';
 import ChatBox from '../components/ChatBox';
 import ScreenShareButton from '../components/ScreenShareButton';
+import SharedTodoList from '../components/SharedTodoList';
 
 // --- Définitions des Icônes SVG ---
 const IconArrowLeft = ({ className = "w-6 h-6" }) => (
@@ -93,7 +94,7 @@ const MeetRoomPage = () => {
   const [isJoiningRoom, setIsJoiningRoom] = useState(true);
 
   // État pour le flux affiché en grand
-  const [mainDisplayedStreamInfo, setMainDisplayedStreamInfo] = useState({ stream: null, id: null, email: null, isLocal: true });
+  const [mainDisplayedStreamInfo, setMainDisplayedStreamInfo] = useState({ stream: null, id: null, email: null, isLocal: true, fullName: 'Vous' });
   const carouselRef = useRef(null);
 
   // États pour l'enregistrement
@@ -160,11 +161,24 @@ const MeetRoomPage = () => {
     peer.on('open', (id) => {
       console.log('[Effect 1] PeerJS opened with ID:', id, 'Expected ID:', peerIdToInitialize);
       navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
+        .then(async stream => {
           console.log('[Effect 1] getUserMedia SUCCESS');
           cameraStreamRef.current = stream;
           setLocalStream(stream);
-          setMainDisplayedStreamInfo({ stream: stream, id: peerIdToInitialize, email: currentUser.email, isLocal: true });
+          let userFullName = currentUser.email?.split('@')[0] || 'Vous';
+          if (currentUser && currentUser.id) {
+            const { data: profile, error: profileError } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', currentUser.id)
+              .single();
+            if (profileError) {
+              console.warn('[Effect 1] Erreur récupération profil local:', profileError.message);
+            } else if (profile && profile.full_name) {
+              userFullName = profile.full_name;
+            }
+          }
+          setMainDisplayedStreamInfo({ stream: stream, id: peerIdToInitialize, email: currentUser.email, isLocal: true, fullName: userFullName });
         })
         .catch(err => {
           console.error('[Effect 1] getUserMedia ERROR:', err);
@@ -243,7 +257,7 @@ const MeetRoomPage = () => {
             .match({ peer_id: peerInstance.id });
 
           if (deleteError) {
-            console.warn('[Effect 2] Supabase DELETE prior participant by peer_id warning (non-fatal):', JSON.stringify(deleteError, null, 2));
+            console.warn('[Effect 2] Supabase DELETE prior participant by peer_id warning (non-fatal): ', JSON.stringify(deleteError, null, 2));
           } else {
             console.log(`[Effect 2] Successfully deleted prior participant record for peer_id: ${peerInstance.id} (if any existed).`);
           }
@@ -252,6 +266,19 @@ const MeetRoomPage = () => {
         }
 
         console.log('[Effect 2] Attempting to UPSERT participant record.');
+        let currentUserFullName = currentUser.email?.split('@')[0] || 'Utilisateur';
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', currentUser.id)
+          .single();
+
+        if (profileError) {
+          console.warn(`[Effect 2] Erreur récupération du profil pour ${currentUser.id}:`, profileError.message);
+        } else if (profileData) {
+          currentUserFullName = profileData.full_name || currentUserFullName;
+        }
+        
         const { error: upsertError } = await supabase
           .from('room_participants')
           .upsert({
@@ -261,6 +288,7 @@ const MeetRoomPage = () => {
             user_email: currentUser.email,
             status: 'online',
             last_seen: new Date().toISOString(),
+            user_full_name: currentUserFullName,
           }, { onConflict: 'room_id, user_id' });
 
         if (!isMounted) return;
@@ -276,7 +304,7 @@ const MeetRoomPage = () => {
         console.log('[Effect 2] Attempting to FETCH initial participants.');
         const { data: initialParticipants, error: fetchError } = await supabase
           .from('room_participants')
-          .select('id, room_id, user_id, peer_id, user_email, status') 
+          .select('id, room_id, user_id, peer_id, user_email, status, user_full_name')
           .eq('room_id', roomId)
           .eq('status', 'online')
           .neq('peer_id', peerInstance.id);
@@ -285,12 +313,12 @@ const MeetRoomPage = () => {
         if (fetchError) {
           console.error('[Effect 2] Supabase FETCH initial participants ERROR:', fetchError);
         } else if (initialParticipants) {
-          console.log('[Effect 2] Initial participants fetched:', initialParticipants.map(p=>p.user_email));
+          console.log('[Effect 2] Initial participants fetched:', initialParticipants.map(p=>p.user_full_name || p.user_email));
           setRoomParticipantsData(initialParticipants.filter(p => p.peer_id !== peerInstance.id)); 
           initialParticipants.forEach(participant => {
             if (participant.peer_id !== peerInstance.id) {
-              console.log('[Effect 2] Initiating call to initial participant:', participant.user_email, participant.peer_id);
-              initiateCallToPeer(participant.peer_id, participant.user_email);
+              console.log('[Effect 2] Initiating call to initial participant:', participant.user_full_name || participant.user_email, participant.peer_id);
+              initiateCallToPeer(participant.peer_id, participant.user_email, participant.user_full_name);
             }
           });
         }
@@ -335,12 +363,12 @@ const MeetRoomPage = () => {
         });
 
         if (eventType === 'INSERT' && newRecord.peer_id !== peerInstance.id && newRecord.status === 'online' && newRecord.peer_id) {
-          initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
+          initiateCallToPeer(newRecord.peer_id, newRecord.user_email, newRecord.user_full_name);
         } else if (eventType === 'UPDATE' && newRecord.peer_id !== peerInstance.id) {
           if (newRecord.status === 'offline' && connectedPeers[newRecord.peer_id]) {
             connectedPeers[newRecord.peer_id].close();
           } else if (newRecord.status === 'online' && oldRecord?.status !== 'online' && !connectedPeers[newRecord.peer_id]) {
-            initiateCallToPeer(newRecord.peer_id, newRecord.user_email);
+            initiateCallToPeer(newRecord.peer_id, newRecord.user_email, newRecord.user_full_name);
           }
         } else if (eventType === 'DELETE' && oldRecord.peer_id !== peerInstance.id && oldRecord.peer_id && connectedPeers[oldRecord.peer_id]) {
           connectedPeers[oldRecord.peer_id].close();
@@ -370,14 +398,15 @@ const MeetRoomPage = () => {
       
       const participantInfo = roomParticipantsData.find(p => p.peer_id === call.peer);
       const participantEmail = participantInfo?.user_email || 'Pair distant';
+      const participantFullName = participantInfo?.user_full_name || participantEmail.split('@')[0];
       
       call.on('stream', remoteStream => { 
-        console.log(`[Effect 4] Stream received from ${call.peer} (${participantEmail})`);
+        console.log(`[Effect 4] Stream received from ${call.peer} (${participantFullName})`);
         setRemoteStreams(prev => {
           if (prev.find(s => s.id === call.peer)) return prev;
-          return [...prev, { id: call.peer, stream: remoteStream, email: participantEmail }];
+          return [...prev, { id: call.peer, stream: remoteStream, email: participantEmail, fullName: participantFullName }];
         });
-        setConnectedPeers(prev => ({ ...prev, [call.peer]: call }));
+          setConnectedPeers(prev => ({ ...prev, [call.peer]: call }));
       });
       
       call.on('close', () => { 
@@ -385,7 +414,12 @@ const MeetRoomPage = () => {
         setRemoteStreams(prev => prev.filter(s => s.id !== call.peer)); 
         setConnectedPeers(prev => { const n = {...prev}; delete n[call.peer]; return n; });
         if (mainDisplayedStreamInfo.id === call.peer && localStream) {
-            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+            let localUserFullName = currentUser.email?.split('@')[0] || 'Vous';
+            const localProfile = roomParticipantsData.find(p => p.user_id === currentUser.id);
+            if (localProfile && localProfile.user_full_name) {
+                localUserFullName = localProfile.user_full_name;
+            }
+            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true, fullName: localUserFullName });
         }
       });
       
@@ -394,7 +428,12 @@ const MeetRoomPage = () => {
         setRemoteStreams(prev => prev.filter(s => s.id !== call.peer));
         setConnectedPeers(prev => { const n = {...prev}; delete n[call.peer]; return n; });
         if (mainDisplayedStreamInfo.id === call.peer && localStream) {
-             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+             let localUserFullName = currentUser.email?.split('@')[0] || 'Vous';
+             const localProfile = roomParticipantsData.find(p => p.user_id === currentUser.id);
+             if (localProfile && localProfile.user_full_name) {
+                 localUserFullName = localProfile.user_full_name;
+             }
+             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true, fullName: localUserFullName });
         }
       });
     };
@@ -408,7 +447,7 @@ const MeetRoomPage = () => {
   }, [localStream, roomParticipantsData, mainDisplayedStreamInfo, currentUser?.id, currentUser?.email]);
 
   // Fonction pour appeler un autre pair
-  const initiateCallToPeer = (remotePeerId, remoteUserEmail = 'Pair distant') => {
+  const initiateCallToPeer = (remotePeerId, remoteUserEmail = 'Pair distant', remoteUserFullName) => {
     if (!localStream || !remotePeerId || !peerInstance?.id) {
       console.warn('[initiateCallToPeer] Aborted: missing localStream, remotePeerId, or peerInstance.id');
       return;
@@ -421,7 +460,7 @@ const MeetRoomPage = () => {
       console.log(`[initiateCallToPeer] Aborted: already connected or connecting to ${remotePeerId}`);
       return;
     }
-    console.log(`[initiateCallToPeer] Attempting to call ${remotePeerId} (${remoteUserEmail})`);
+    console.log(`[initiateCallToPeer] Attempting to call ${remoteUserFullName || remoteUserEmail} (${remotePeerId})`);
     const call = callPeer(remotePeerId, localStream);
     if (call) {
       setConnectedPeers(prev => ({ ...prev, [remotePeerId]: call })); 
@@ -429,7 +468,7 @@ const MeetRoomPage = () => {
         console.log(`[initiateCallToPeer] Stream received from ${remotePeerId}`);
         setRemoteStreams(prev => {
             if (prev.find(s => s.id === remotePeerId)) return prev;
-            return [...prev, { id: remotePeerId, stream: remoteStream, email: remoteUserEmail }];
+            return [...prev, { id: remotePeerId, stream: remoteStream, email: remoteUserEmail, fullName: remoteUserFullName }];
         });
       });
       call.on('close', () => {
@@ -437,7 +476,12 @@ const MeetRoomPage = () => {
         setRemoteStreams(prev => prev.filter(s => s.id !== remotePeerId));
         setConnectedPeers(prev => { const n = {...prev}; delete n[remotePeerId]; return n; });
         if (mainDisplayedStreamInfo.id === remotePeerId && localStream) {
-            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+            let localUserFullName = currentUser.email?.split('@')[0] || 'Vous';
+            const localProfile = roomParticipantsData.find(p => p.user_id === currentUser.id);
+            if (localProfile && localProfile.user_full_name) {
+                localUserFullName = localProfile.user_full_name;
+            }
+            setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true, fullName: localUserFullName });
         }
       });
       call.on('error', (err) => {
@@ -445,7 +489,12 @@ const MeetRoomPage = () => {
         setRemoteStreams(prev => prev.filter(s => s.id !== remotePeerId));
         setConnectedPeers(prev => { const n = {...prev}; delete n[remotePeerId]; return n; });
         if (mainDisplayedStreamInfo.id === remotePeerId && localStream) {
-             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+             let localUserFullName = currentUser.email?.split('@')[0] || 'Vous';
+             const localProfile = roomParticipantsData.find(p => p.user_id === currentUser.id);
+             if (localProfile && localProfile.user_full_name) {
+                 localUserFullName = localProfile.user_full_name;
+             }
+             setMainDisplayedStreamInfo({ stream: localStream, id: currentUser.id, email: currentUser.email, isLocal: true, fullName: localUserFullName });
         }
       });
     } else {
@@ -457,7 +506,9 @@ const MeetRoomPage = () => {
   const handleActiveStreamChange = (newActiveStream, type) => {
     console.log(`[handleActiveStreamChange] Type: ${type}, new stream has ${newActiveStream?.getTracks().length} tracks.`);
     const currentActiveCameraStream = cameraStreamRef.current;
-    let streamToDisplayInMain, idToDisplay, emailToDisplay, isLocalToDisplay;
+    let streamToDisplayInMain, idToDisplay, emailToDisplay, isLocalToDisplay, fullNameToDisplay;
+
+    let currentLocalUserFullName = mainDisplayedStreamInfo.isLocal ? mainDisplayedStreamInfo.fullName : (currentUser.email?.split('@')[0] || 'Vous');
 
     if (type === 'screen') {
       setLocalStream(newActiveStream);
@@ -465,6 +516,7 @@ const MeetRoomPage = () => {
       idToDisplay = currentUser.id + '_screen';
       emailToDisplay = currentUser.email;
       isLocalToDisplay = true;
+      fullNameToDisplay = `${currentLocalUserFullName} (Écran)`;
 
       Object.values(connectedPeers).forEach(call => {
         const videoSender = call.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
@@ -490,6 +542,7 @@ const MeetRoomPage = () => {
         idToDisplay = currentUser.id;
         emailToDisplay = currentUser.email;
         isLocalToDisplay = true;
+        fullNameToDisplay = currentLocalUserFullName;
 
         Object.values(connectedPeers).forEach(call => {
           const videoSender = call.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
@@ -520,7 +573,8 @@ const MeetRoomPage = () => {
             stream: streamToDisplayInMain,
             id: idToDisplay,
             email: emailToDisplay,
-            isLocal: isLocalToDisplay
+            isLocal: isLocalToDisplay,
+            fullName: fullNameToDisplay
         });
     }
   };
@@ -530,8 +584,13 @@ const MeetRoomPage = () => {
     const currentActiveCameraStream = cameraStreamRef.current;
     if (currentActiveCameraStream && localStream !== currentActiveCameraStream) {
       console.log('Fallback: Partage écran terminé, retour caméra.');
+      let localUserFullName = 'Vous';
+       const localProfile = roomParticipantsData.find(p => p.user_id === currentUser.id && p.user_full_name);
+       if (localProfile) localUserFullName = localProfile.user_full_name;
+       else if (mainDisplayedStreamInfo.isLocal && mainDisplayedStreamInfo.id === currentUser.id) localUserFullName = mainDisplayedStreamInfo.fullName;
+
       handleActiveStreamChange(currentActiveCameraStream, 'camera');
-      setMainDisplayedStreamInfo({ stream: currentActiveCameraStream, id: currentUser.id, email: currentUser.email, isLocal: true });
+      setMainDisplayedStreamInfo({ stream: currentActiveCameraStream, id: currentUser.id, email: currentUser.email, isLocal: true, fullName: localUserFullName });
     } else if (!currentActiveCameraStream) {
       console.warn('Partage écran terminé, mais flux caméra original non trouvé.');
       Object.values(connectedPeers).forEach(call => {
@@ -540,7 +599,7 @@ const MeetRoomPage = () => {
       });
       setLocalStream(null);
       if (mainDisplayedStreamInfo.id === currentUser.id + '_screen') {
-        setMainDisplayedStreamInfo({ stream: null, id: null, email: null, isLocal: true });
+        setMainDisplayedStreamInfo({ stream: null, id: null, email: null, isLocal: true, fullName: 'Vous' });
       }
     }
   };
@@ -607,7 +666,7 @@ const MeetRoomPage = () => {
         console.warn('Aucun enregistrement en cours à arrêter.');
     }
   };
-  
+
   const handleToggleRecording = () => { if (isRecording) stopRecording(); else startRecording(); };
   const handleLeaveRoom = async () => { console.log('[handleLeaveRoom] Leaving room...'); if (isRecording) stopRecording(); navigate('/dashboard'); };
   
@@ -686,7 +745,10 @@ const MeetRoomPage = () => {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Chargement final des données de la salle...</p></div>;
   }
   
-  const currentUserShortName = currentUser.email?.split('@')[0] || 'Vous';
+  const currentUserFullName = mainDisplayedStreamInfo.isLocal && mainDisplayedStreamInfo.id === currentUser.id 
+    ? mainDisplayedStreamInfo.fullName 
+    : (roomParticipantsData.find(p => p.user_id === currentUser.id)?.user_full_name || currentUser.email?.split('@')[0] || 'Vous');
+  
   const onlineParticipantsForSidePanel = roomParticipantsData.filter(p => p.status === 'online' && p.peer_id !== peerInstance?.id);
 
   // Préparer les éléments pour le carrousel
@@ -698,12 +760,14 @@ const MeetRoomPage = () => {
   });
   const localStreamId = localStream === cameraStreamRef.current ? currentUser.id : currentUser.id + '_screen';
   if (localStream && mainDisplayedStreamInfo.id !== localStreamId) {
-    carouselItems.push({
-      stream: localStream,
-      id: localStreamId,
-      email: currentUser.email,
-      isLocal: true
-    });
+    const localUserStreamData = mainDisplayedStreamInfo.id === localStreamId ? mainDisplayedStreamInfo : {
+        stream: localStream,
+        id: localStreamId,
+        email: currentUser.email,
+        isLocal: true,
+        fullName: localStreamId.includes('_screen') ? `${currentUserFullName} (Écran)`: currentUserFullName
+    };
+    carouselItems.push(localUserStreamData);
   }
 
   return (
@@ -713,7 +777,7 @@ const MeetRoomPage = () => {
           <button onClick={() => navigate('/dashboard')} className="p-1.5 rounded-minimeet-full hover:bg-minimeet-background focus:outline-none focus:ring-2 focus:ring-minimeet-primary focus:ring-opacity-50"><IconArrowLeft className="w-5 h-5 text-minimeet-text-secondary" /></button>
           <div>
             <h1 className="text-base sm:text-lg font-semibold truncate" title={roomId}>{`Réunion: ${roomId.length > 15 ? roomId.substring(0,12)+'...' : roomId}`}</h1>
-            <p className="text-xs text-minimeet-text-muted">Salle de {currentUserShortName}</p>
+            <p className="text-xs text-minimeet-text-muted">Salle de {currentUserFullName}</p>
           </div>
         </div>
         {joiningUser && (
@@ -735,17 +799,17 @@ const MeetRoomPage = () => {
                     <VideoPlayer 
                       stream={mainDisplayedStreamInfo.stream} 
                       isLocal={mainDisplayedStreamInfo.isLocal} 
-                      muted={mainDisplayedStreamInfo.isLocal || !mainDisplayedStreamInfo.isLocal} 
+                      muted={mainDisplayedStreamInfo.isLocal} 
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center text-minimeet-text-muted">
                         <IconCamOff className="w-16 h-16 opacity-50 mb-2"/>
-                        <p >{mainDisplayedStreamInfo.id ? `Le flux de ${mainDisplayedStreamInfo.email?.split('@')[0] || 'participant'} n'est pas disponible.` : 'Aucun flux à afficher...'}</p>
+                        <p >{mainDisplayedStreamInfo.id ? `Le flux de ${mainDisplayedStreamInfo.fullName || mainDisplayedStreamInfo.email?.split('@')[0] || 'participant'} n'est pas disponible.` : 'Aucun flux à afficher...'}</p>
                     </div>
                 )}
                 <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2.5 py-1 rounded-minimeet-md text-sm font-medium">
-                  {mainDisplayedStreamInfo.email?.split('@')[0] || (mainDisplayedStreamInfo.id || '').substring(0,8)}
-                  {mainDisplayedStreamInfo.isLocal && ' (Vous)'}
+                  {mainDisplayedStreamInfo.fullName || mainDisplayedStreamInfo.email?.split('@')[0] || (mainDisplayedStreamInfo.id || '').substring(0,8)}
+                  {mainDisplayedStreamInfo.isLocal && !mainDisplayedStreamInfo.id?.includes("_screen") && ' (Vous)'}
                 </div>
               </div>
             </div>
@@ -790,22 +854,22 @@ const MeetRoomPage = () => {
                             muted={true}
                         />
                         <div className="absolute bottom-1 left-1.5 bg-black/60 text-white px-1.5 py-0.5 rounded-minimeet-sm text-xs truncate max-w-[calc(100%-12px)]">
-                            {item.email?.split('@')[0] || item.id.substring(0,8)}
-                            {item.isLocal && ' (Vous)'}
+                            {item.fullName || item.email?.split('@')[0] || item.id.substring(0,8)}
+                            {item.isLocal && !item.id?.includes("_screen") && ' (Vous)'}
                         </div>
                     </div>
                     ))
-                ) : (
-                    <div className="h-full flex items-center justify-center w-full">
-                        <p className="text-sm text-minimeet-text-muted italic">
-                            {isJoiningRoom || isLoading ? "Recherche de participants..." : "Aucun autre participant pour le moment."}
-                        </p>
-                    </div>
-                )}
-              </div>
+            ) : (
+                <div className="h-full flex items-center justify-center w-full">
+                    <p className="text-sm text-minimeet-text-muted italic">
+                        {isJoiningRoom || isLoading ? "Recherche de participants..." : "Aucun autre participant pour le moment."}
+                    </p>
+                </div>
+            )}
+          </div>
             </div>
           )}
-          
+
           <div className="mt-auto pt-3 sm:pt-4 flex items-center justify-center w-full z-10 flex-shrink-0">
             <div className="flex items-center flex-wrap justify-center gap-1.5 xs:gap-2 sm:gap-3 bg-minimeet-dark-panel/80 backdrop-blur-md p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full shadow-minimeet-lg">
                 <button onClick={toggleMic} title={isMicMuted ? "Activer micro" : "Couper micro"} className={`p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${isMicMuted ? 'bg-minimeet-error text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}>{isMicMuted ? <IconMicOff className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/> : <IconMicOn className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>}</button>
@@ -835,7 +899,7 @@ const MeetRoomPage = () => {
                     className={`hidden sm:flex p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full transition-colors ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
                     <IconUsers className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6"/>
                 </button>
-                 <button 
+                <button 
                     onClick={handleLeaveRoom}
                     title="Quitter la réunion"
                     className="p-2 xs:p-2.5 sm:p-3 rounded-minimeet-full bg-minimeet-error hover:bg-red-700 text-white transition-colors">
@@ -855,46 +919,54 @@ const MeetRoomPage = () => {
             </div>
           </div>
         </main>
-        <aside className={`w-full lg:w-[320px] xl:w-[360px] bg-minimeet-surface flex-shrink-0 flex flex-col border-l border-minimeet-border lg:h-full lg:overflow-y-auto ${activeTab === 'none' && 'hidden lg:flex'}`}>
-           <div className="p-3 border-b border-minimeet-border flex lg:hidden items-center justify-center space-x-2">
-                <button 
-                    onClick={() => setActiveTab(activeTab === 'chat' ? 'none' : 'chat')} 
-                    title={activeTab === 'chat' ? "Masquer le Chat" : "Afficher le Chat"}
-                    className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'chat' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
-                    <IconChatBubbleLeftEllipsis className="w-5 h-5 mx-auto"/>
-                </button>
-                <button 
-                    onClick={() => setActiveTab(activeTab === 'participants' ? 'none' : 'participants')} 
-                    title={activeTab === 'participants' ? "Masquer les Participants" : "Afficher les Participants"}
-                    className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
-                    <IconUsers className="w-5 h-5 mx-auto"/>
-                </button>
+        <aside className={`w-full lg:w-[320px] xl:w-[360px] bg-minimeet-surface flex-shrink-0 flex flex-col border-l border-minimeet-border lg:h-full ${activeTab === 'none' && 'hidden lg:flex'}`}>
+          <div className="h-[40%] p-2 border-b border-minimeet-border lg:overflow-y-auto">
+            {currentUser && roomId && <SharedTodoList roomId={roomId} currentUser={currentUser} />}
+          </div>
+
+          <div className="h-[60%] flex flex-col">
+            <div className="p-3 border-b border-minimeet-border flex lg:hidden items-center justify-center space-x-2">
+                  <button 
+                      onClick={() => setActiveTab(activeTab === 'chat' ? 'none' : 'chat')} 
+                      title={activeTab === 'chat' ? "Masquer le Chat" : "Afficher le Chat"}
+                      className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'chat' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
+                      <IconChatBubbleLeftEllipsis className="w-5 h-5 mx-auto"/>
+                  </button>
+                  <button 
+                      onClick={() => setActiveTab(activeTab === 'participants' ? 'none' : 'participants')} 
+                      title={activeTab === 'participants' ? "Masquer les Participants" : "Afficher les Participants"}
+                      className={`p-2 rounded-minimeet-md transition-colors w-full ${activeTab === 'participants' ? 'bg-minimeet-primary text-white' : 'bg-minimeet-background hover:bg-minimeet-background-hover text-minimeet-text-primary'}`}>
+                      <IconUsers className="w-5 h-5 mx-auto"/>
+                  </button>
             </div>
 
-          {activeTab === 'chat' && roomId && currentUser && <ChatBox roomId={roomId} currentUser={currentUser} />}
-          {activeTab === 'participants' && currentUser && (
-              <div className="p-4 flex-grow">
-                <p className="text-minimeet-text-primary font-semibold mb-3">Participants ({1 + onlineParticipantsForSidePanel.length})</p>
-                 <ul className="space-y-1.5">
-                    <li className="text-minimeet-text-primary text-sm font-medium flex items-center">
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        {currentUserShortName} (Vous)
-                    </li>
-                  {onlineParticipantsForSidePanel.map(p => (
-                    <li key={p.peer_id} className="text-minimeet-text-secondary text-sm flex items-center">
-                       <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                      {p.user_email?.split('@')[0] || p.peer_id.substring(0,8)}
-                    </li>
-                  ))}
-                  {onlineParticipantsForSidePanel.length === 0 && !isLoading && <li className="text-sm text-minimeet-text-muted italic mt-2">Vous êtes seul pour le moment.</li>}
-                </ul>
-              </div>
-            )}
-           {activeTab === 'none' && 
-             <div className="p-4 flex-grow flex items-center justify-center lg:hidden">
-                <p className="text-minimeet-text-muted text-sm">Affichez le chat ou les participants.</p>
-             </div>
-            }
+            <div className="flex-grow overflow-y-auto">
+              {activeTab === 'chat' && roomId && currentUser && <ChatBox roomId={roomId} currentUser={currentUser} />}
+              {activeTab === 'participants' && currentUser && (
+                  <div className="p-4 flex-grow">
+                    <p className="text-minimeet-text-primary font-semibold mb-3">Participants ({1 + onlineParticipantsForSidePanel.length})</p>
+                    <ul className="space-y-1.5">
+                        <li className="text-minimeet-text-primary text-sm font-medium flex items-center">
+                            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                            {currentUserFullName} (Vous)
+                        </li>
+                      {onlineParticipantsForSidePanel.map(p => (
+                        <li key={p.peer_id} className="text-minimeet-text-secondary text-sm flex items-center">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          {p.user_full_name || p.user_email?.split('@')[0] || p.peer_id.substring(0,8)}
+                        </li>
+                      ))}
+                      {onlineParticipantsForSidePanel.length === 0 && !isLoading && <li className="text-sm text-minimeet-text-muted italic mt-2">Vous êtes seul pour le moment.</li>}
+                    </ul>
+                  </div>
+                )}
+              {activeTab === 'none' && 
+                <div className="p-4 flex-grow flex items-center justify-center lg:hidden">
+                    <p className="text-minimeet-text-muted text-sm">Affichez le chat ou les participants.</p>
+                </div>
+                }
+            </div>
+          </div>
         </aside>
       </div>
     </div>

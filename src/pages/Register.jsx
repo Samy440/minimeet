@@ -6,6 +6,7 @@ const RegisterPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -16,21 +17,47 @@ const RegisterPage = () => {
     setError(null);
     setSuccess(null);
 
+    if (!fullName.trim()) {
+      setError("Le nom et prénom sont requis.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Les mots de passe ne correspondent pas.");
       return;
     }
     setLoading(true);
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName.trim()
+          }
+        }
       });
+
       if (signUpError) throw signUpError;
+      if (!signUpData.user) throw new Error("L'utilisateur n'a pas été créé correctement après signUp (pas de user data).");
+
+      console.log(`Inscription auth réussie pour ${signUpData.user.id}. Le profil devrait être créé par le trigger.`);
+
+      const { data: updatedUserData, error: updateUserError } = await supabase.auth.updateUser({
+        data: { full_name: fullName.trim() } 
+      });
+
+      if (updateUserError) {
+        console.warn("Erreur lors de la mise à jour des user_metadata (non bloquant):", updateUserError);
+      } else {
+        console.log("User metadata (via auth.updateUser) mis à jour avec succès:", updatedUserData);
+      }
+
       setSuccess("Inscription réussie ! Veuillez vérifier vos e-mails pour confirmer votre compte.");
       // Optionnel: rediriger après un délai si vous le souhaitez, par exemple vers la page de connexion.
       // setTimeout(() => navigate('/login'), 3000);
     } catch (error) {
+      console.error("Erreur globale lors de l'inscription:", error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -53,6 +80,23 @@ const RegisterPage = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleRegister}>
+          <div>
+            <label htmlFor="full-name" className="block text-sm font-medium text-minimeet-text-secondary mb-1.5">
+              Nom et Prénom
+            </label>
+            <input
+              id="full-name"
+              name="full-name"
+              type="text"
+              autoComplete="name"
+              required
+              className="w-full px-4 py-3 border border-minimeet-border rounded-minimeet-md bg-minimeet-background text-minimeet-text-primary placeholder-minimeet-text-muted focus:ring-2 focus:ring-minimeet-primary focus:border-transparent shadow-minimeet-sm sm:text-sm"
+              placeholder="Ex: Jean Dupont"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={loading}
+            />
+          </div>
           <div>
             <label htmlFor="email-address" className="block text-sm font-medium text-minimeet-text-secondary mb-1.5">
               Adresse e-mail
