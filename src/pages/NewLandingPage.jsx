@@ -147,11 +147,11 @@ const NewLandingPage = () => {
               <div className="space-y-6">
                 <div>
                   <h4 className="text-xl font-medium text-minimeet-primary mb-1">Par Email</h4>
-                  <a href="mailto:contact@minimeet.example.com" className="text-lg text-minimeet-text-secondary hover:text-minimeet-primary-hover hover:underline">contact@minimeet.example.com</a>
+                  <a href="mailto:marcaureladj@gmail.com" className="text-lg text-minimeet-text-secondary hover:text-minimeet-primary-hover hover:underline">marcaureladj@gmail.com</a>
                 </div>
                 <div>
                   <h4 className="text-xl font-medium text-minimeet-primary mb-1">Par Téléphone</h4>
-                  <a href="tel:+33123456789" className="text-lg text-minimeet-text-secondary hover:text-minimeet-primary-hover hover:underline">+33 1 23 45 67 89</a>
+                  <a href="tel:+2290195413447" className="text-lg text-minimeet-text-secondary hover:text-minimeet-primary-hover hover:underline">+229 01 95 41 34</a>
                 </div>
               </div>
             </div>
