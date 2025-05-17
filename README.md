@@ -70,7 +70,7 @@ Suivez ces étapes pour configurer et lancer le projet MiniMeet en local.
 
 4.  **Configuration de la Base de Données Supabase :**
     *   Assurez-vous que l'authentification (Auth) est activée dans votre projet Supabase.
-    *   Exécutez le script SQL fourni `create_tables.sql` dans l'éditeur SQL de votre tableau de bord Supabase. Ce script créera les tables nécessaires (`meetings`, `messages`, `room_participants`, `profiles`, `todos`) et configurera les politiques de sécurité au niveau des lignes (RLS) de base.
+    *   Les tables nécessaires (`meetings`, `messages`, `room_participants`, `profiles`, `todos`) , n'oubliez pas les politiques de sécurité au niveau des lignes (RLS) de base.
 
 ### Lancement du Projet
 
