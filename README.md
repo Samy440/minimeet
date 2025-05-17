@@ -47,10 +47,10 @@ Suivez ces étapes pour configurer et lancer le projet MiniMeet en local.
 
 1.  **Clonez le dépôt du projet :**
     ```bash
-    git clone <URL_DU_DEPOT>
+    git clone https://github.com/marcaureladj/minimeet.git
     cd minimeet 
     ```
-    *(Remplacez `<URL_DU_DEPOT>` par l'URL réelle de votre dépôt si applicable, sinon adaptez au nom de votre répertoire projet)*
+   
 
 2.  **Installez les dépendances :**
     ```bash
@@ -115,7 +115,7 @@ Pour le moment, les contributions externes ne sont pas activement recherchées, 
 
 ## 📄 Licence
 
-*(Spécifiez votre licence ici, par exemple : MIT, Apache 2.0, ou laissez "Non spécifié" si aucune licence n'est encore choisie)*
+*MIT*
 
 ---
 
