@@ -71,12 +71,6 @@ const RegisterPage = () => {
           <h2 className="mt-6 text-3xl font-semibold tracking-tight text-minimeet-text-primary">
             Créez votre compte
           </h2>
-          <p className="mt-2 text-sm text-minimeet-text-secondary">
-            ou{" "}
-            <Link to="/login" className="font-medium text-minimeet-primary hover:text-minimeet-primary-hover">
-              connectez-vous
-            </Link>
-          </p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleRegister}>
@@ -172,6 +166,19 @@ const RegisterPage = () => {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-minimeet-text-secondary">
+            Ou
+          </p>
+          <Link 
+            to="/login" 
+            className="mt-2 inline-block w-full py-3 px-4 border border-minimeet-border text-sm font-medium rounded-minimeet-md text-minimeet-primary bg-minimeet-surface hover:bg-minimeet-background focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-minimeet-primary transition-colors duration-150 shadow-minimeet-sm hover:shadow-minimeet-md"
+          >
+            Se connecter avec un compte existant
+          </Link>
+        </div>
+
       </div>
     </div>
   );

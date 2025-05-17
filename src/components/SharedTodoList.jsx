@@ -22,6 +22,11 @@ const IconPlus = ({ className = "w-5 h-5" }) => (
   </svg>
 );
 
+const IconTrash = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+  </svg>
+);
 
 const SharedTodoList = ({ roomId, currentUser }) => {
   console.log('[SharedTodoList] Component RENDERED/RE-RENDERED. Room ID:', roomId, 'CurrentUser:', currentUser?.id);
@@ -223,6 +228,39 @@ const SharedTodoList = ({ roomId, currentUser }) => {
     }
   };
 
+  const handleDeleteTodo = async (todoId) => {
+    console.log('[SharedTodoList] handleDeleteTodo called. Todo ID:', todoId);
+    if (!currentUser || !roomId) {
+        console.warn('[SharedTodoList] handleDeleteTodo: Aborted due to missing user/roomId.');
+        return;
+    }
+    // Optionnel: Demander confirmation
+    const isConfirmed = window.confirm("Êtes-vous sûr de vouloir supprimer cette tâche ?");
+    if (!isConfirmed) {
+        return;
+    }
+
+    try {
+      console.log('[SharedTodoList] handleDeleteTodo: Deleting todo ID:', todoId);
+      // Note: La politique RLS doit permettre cette opération.
+      // Si vous voulez que seul le créateur puisse supprimer:
+      // .match({ id: todoId, created_by_user_id: currentUser.id })
+      // Pour l'instant, on suppose que quiconque dans la room peut supprimer.
+      const { error: deleteError } = await supabase
+        .from('todos')
+        .delete()
+        .eq('id', todoId);
+
+      if (deleteError) throw deleteError;
+      // La suppression est gérée par Realtime, qui mettra à jour l'état `todos`
+      // Aucun changement d'état local direct nécessaire ici.
+      console.log('[SharedTodoList] handleDeleteTodo: Todo deleted successfully via DB operation.');
+    } catch (err) {
+      console.error("[SharedTodoList] Erreur de suppression du todo:", err);
+      setError("Impossible de supprimer la tâche. " + err.message);
+    }
+  };
+
   if (isLoading && !roomId) { 
     return null; 
   }
@@ -258,9 +296,19 @@ const SharedTodoList = ({ roomId, currentUser }) => {
             <span className={`flex-grow text-sm ${todo.is_completed ? 'line-through text-gray-500' : 'text-gray-100'}`}>
               {todo.task_content}
             </span>
-            <span className="text-xs text-gray-500 ml-2 opacity-70 group-hover:opacity-100 transition-opacity">
+            <span className="text-xs text-gray-500 ml-2 mr-2 opacity-70 group-hover:opacity-100 transition-opacity">
              créé par {todo.created_by_full_name || (todo.created_by_user_id || '').substring(0,5)}
             </span>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteTodo(todo.id);
+              }}
+              aria-label="Supprimer la tâche"
+              className="p-1 rounded-full hover:bg-red-700/50 focus:outline-none focus:ring-1 focus:ring-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+            >
+              <IconTrash className="w-4 h-4 text-red-400 hover:text-red-300" />
+            </button>
           </div>
         ))}
         {/* listEndRef n'est plus nécessaire si on scrolle le conteneur parent directement */}

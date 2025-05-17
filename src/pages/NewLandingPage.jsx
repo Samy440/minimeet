@@ -108,7 +108,7 @@ const NewLandingPage = () => {
               <div key={index} className="bg-white/80 backdrop-blur-sm p-6 sm:p-8 rounded-minimeet-xl shadow-minimeet-lg hover:shadow-minimeet-xl transition-shadow transform hover:-translate-y-1 duration-150">
                 <div className="flex items-center justify-center w-14 h-14 bg-minimeet-primary text-white rounded-minimeet-full mb-5 sm:mb-6">
                   {feature.icon}
-                </div>
+              </div>
                 <h3 className="text-xl sm:text-2xl font-semibold mb-3 text-minimeet-text-primary">{feature.title}</h3>
                 <p className="text-base text-minimeet-text-secondary">
                   {feature.description}
@@ -125,12 +125,12 @@ const NewLandingPage = () => {
             <div className="bg-white/80 backdrop-blur-sm p-8 sm:p-10 md:p-12 rounded-minimeet-xl shadow-minimeet-lg max-w-4xl mx-auto">
               <h2 className="text-3xl sm:text-4xl font-semibold mb-6 text-center text-minimeet-text-primary">À propos de MiniMeet</h2>
               <p className="text-lg text-minimeet-text-secondary leading-relaxed mb-4">
-                  MiniMeet est un projet passionné visant à fournir une solution de visioconférence simple, open-source et respectueuse de la vie privée. 
-                  Nous croyons en la puissance de la connexion humaine et nous nous efforçons de rendre cela accessible à tous.
+                MiniMeet est un projet passionné visant à fournir une solution de visioconférence simple, open-source et respectueuse de la vie privée. 
+                Nous croyons en la puissance de la connexion humaine et nous nous efforçons de rendre cela accessible à tous.
               </p>
               <p className="text-lg text-minimeet-text-secondary leading-relaxed">
                   Ce projet est en cours de développement. N'hésitez pas à suivre son évolution et à contribuer si le cœur vous en dit !
-              </p>
+            </p>
             </div>
           </div>
       </section>

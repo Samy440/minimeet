@@ -12,14 +12,37 @@ const peerConfig = {
   // secure: true, // Si votre serveur PeerJS utilise HTTPS. Par défaut PeerServer Cloud est sur HTTPS.
   config: {
     iceServers: [
+      // Serveurs STUN publics (Google)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      // Vous devriez ajouter vos propres serveurs TURN ici pour une meilleure fiabilité
-       {
-        urls: 'relay1.expressturn.com:3480',
-        username: 'efC31HLVNPO2ESV7EI',
-         credential: 'p3iL2wVPAhMAlmgD'
-      }
+
+      // Vos serveurs Metered.ca
+      // STUN (bien que metered.ca fournisse principalement TURN, inclure leur STUN est ok)
+      { urls: "stun:stun.relay.metered.ca:80" }, 
+      // TURN (UDP - standard)
+      {
+        urls: "turn:standard.relay.metered.ca:80",
+        username: "a477d20cd8d0cbaa5c63b536",
+        credential: "42OzB3QurL4O5ghA",
+      },
+      // TURN (TCP - fallback si UDP est bloqué)
+      {
+        urls: "turn:standard.relay.metered.ca:80?transport=tcp",
+        username: "a477d20cd8d0cbaa5c63b536",
+        credential: "42OzB3QurL4O5ghA",
+      },
+      // TURN (UDP sur port 443 - peut aider à traverser certains pare-feux)
+      {
+        urls: "turn:standard.relay.metered.ca:443",
+        username: "a477d20cd8d0cbaa5c63b536",
+        credential: "42OzB3QurL4O5ghA",
+      },
+      // TURNS (TCP sur port 443, chiffré - fallback plus robuste)
+      {
+        urls: "turns:standard.relay.metered.ca:443?transport=tcp", // Notez 'turns' pour TLS
+        username: "a477d20cd8d0cbaa5c63b536",
+        credential: "42OzB3QurL4O5ghA",
+      },
     ]
   }
 };

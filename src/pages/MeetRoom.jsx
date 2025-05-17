@@ -224,8 +224,8 @@ const MeetRoomPage = () => {
             console.warn('[Effect 1] NO Video track found in getUserMedia stream!');
           }
 
-          cameraStreamRef.current = stream;
-          setLocalStream(stream);
+          cameraStreamRef.current = stream; 
+          setLocalStream(stream); 
           let userFullName = currentUser.email?.split('@')[0] || 'Vous';
           if (currentUser && currentUser.id) {
             const { data: profile, error: profileError } = await supabase
@@ -245,7 +245,7 @@ const MeetRoomPage = () => {
           console.error('[Effect 1] getUserMedia ERROR:', err);
           setPeerError({ message: "Impossible d'accéder à la caméra/micro: " + err.message });
           alert("Impossible d'accéder à la caméra et/ou au microphone. Vérifiez les permissions et actualisez.");
-          setIsJoiningRoom(false);
+          setIsJoiningRoom(false); 
           setIsLoading(false);
           destroyPeer();
           setPeerInstance(null);
@@ -261,7 +261,7 @@ const MeetRoomPage = () => {
         alert("Erreur de connexion au service de visioconférence (PeerJS). Vérifiez votre connexion internet ou réessayez plus tard.");
       }
       setIsJoiningRoom(false);
-      setIsLoading(false);
+        setIsLoading(false);
     };
     
     const onCloseHandler = () => {
@@ -270,7 +270,7 @@ const MeetRoomPage = () => {
       if (peerInstance?.id === (currentPeer?.id || peerIdToInitialize)) {
         setPeerInstance(null);
       }
-      setIsJoiningRoom(false);
+        setIsJoiningRoom(false);
       setIsLoading(false);
     };
 
@@ -282,7 +282,7 @@ const MeetRoomPage = () => {
       console.log("[Effect 1] Peer instance was already open. Manually triggering onOpenHandler logic.");
       onOpenHandler(currentPeer.id);
     }
-
+    
     return () => { 
       console.log(`[Effect 1] CLEANUP for PeerJS init (user: ${peerIdToInitialize}, currentPeerId: ${currentPeer?.id}).`);
       if (currentPeer) {
@@ -384,14 +384,14 @@ const MeetRoomPage = () => {
           .update({ status: 'offline', last_seen: new Date().toISOString() })
           .match({ room_id: currentRoomId, user_id: currentUserId }); 
         console.log('[performLeaveActions] Status updated to offline.');
-      } catch (error) {
+            } catch (error) {
         console.error('[performLeaveActions] Error updating status to offline:', error);
-      }
-    }
+            }
+        }
 
-    if (cameraStreamRef.current) {
+          if (cameraStreamRef.current) {
       console.log('[performLeaveActions] Stopping cameraStreamRef tracks.');
-      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+            cameraStreamRef.current.getTracks().forEach(track => track.stop());
       cameraStreamRef.current = null;
     }
     // Le localStream est généralement soit cameraStreamRef.current, soit le flux de partage d'écran.
@@ -1047,7 +1047,7 @@ const MeetRoomPage = () => {
   };
 
   const handleToggleRecording = () => { if (isRecording) stopRecording(); else startRecording(); };
-
+  
   const toggleMic = () => {
     console.log('[toggleMic] Called. Current isMicMuted state:', isMicMuted);
     if (cameraStreamRef.current && cameraStreamRef.current.getAudioTracks().length > 0) {
@@ -1073,8 +1073,8 @@ const MeetRoomPage = () => {
       if (localStream === cameraStreamRef.current) {
         if (!videoTrack.enabled && mainDisplayedStreamInfo.id === currentUser.id) {
           console.log("[toggleCam] Camera (main display) turned off.");
-        }
-      } else {
+      }
+    } else {
          console.log("[toggleCam] Camera toggled while screen sharing. Change will apply to camera stream, not the active local (screen) stream.");
       }
 
@@ -1174,7 +1174,7 @@ const MeetRoomPage = () => {
   if (!localStream && !peerError && peerInstance) {
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Accès caméra/micro...</p></div>;
   }
-  
+
   if (isLoading) { 
     return <div className="w-screen min-h-screen flex items-center justify-center bg-minimeet-background"><p className="text-minimeet-text-secondary text-lg">Chargement des données de la salle...</p></div>;
   }
@@ -1296,8 +1296,8 @@ const MeetRoomPage = () => {
                             {item.fullName || item.email?.split('@')[0] || item.id.substring(0,8)}
                             {item.isLocal && !item.id?.includes("_screen") && ' (Vous)'}
                         </div>
-                    </div>
-                    ))
+                </div>
+                ))
             ) : (
                 <div className="h-full flex items-center justify-center w-full">
                     <p className="text-sm text-minimeet-text-muted italic">
@@ -1384,7 +1384,7 @@ const MeetRoomPage = () => {
               {activeTab === 'participants' && currentUser && (
                   <div className="p-4 flex-grow">
                     <p className="text-minimeet-text-primary font-semibold mb-3">Participants ({1 + onlineParticipantsForSidePanel.length})</p>
-                    <ul className="space-y-1.5">
+                 <ul className="space-y-1.5">
                         <li className="text-minimeet-text-primary text-sm font-medium flex items-center">
                             <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                             {currentUserFullName} (Vous)
@@ -1393,17 +1393,17 @@ const MeetRoomPage = () => {
                         <li key={p.peer_id} className="text-minimeet-text-secondary text-sm flex items-center">
                           <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                           {p.user_full_name || p.user_email?.split('@')[0] || p.peer_id.substring(0,8)}
-                        </li>
-                      ))}
+                    </li>
+                  ))}
                       {onlineParticipantsForSidePanel.length === 0 && !isLoading && <li className="text-sm text-minimeet-text-muted italic mt-2">Vous êtes seul pour le moment.</li>}
-                    </ul>
-                  </div>
-                )}
+                </ul>
+              </div>
+            )}
               {activeTab === 'none' && 
                 <div className="p-4 flex-grow flex items-center justify-center lg:hidden">
                     <p className="text-minimeet-text-muted text-sm">Affichez le chat ou les participants.</p>
-                </div>
-                }
+             </div>
+            }
             </div>
           </div>
         </aside>

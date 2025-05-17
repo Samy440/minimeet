@@ -177,6 +177,41 @@ const DashboardPage = () => {
     }
   };
 
+  const handleDeleteMeeting = async (meetingId) => {
+    if (!currentUser) {
+      alert("Utilisateur non authentifié.");
+      return;
+    }
+    if (!meetingId) {
+      alert("ID de réunion invalide pour la suppression.");
+      return;
+    }
+
+    const isConfirmed = window.confirm("Êtes-vous sûr de vouloir supprimer cette réunion de votre historique ? Cette action est irréversible.");
+    if (!isConfirmed) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('meetings')
+        .delete()
+        .match({ id: meetingId, user_id: currentUser.id }); // Assurer que l'utilisateur ne supprime que ses propres réunions
+
+      if (error) {
+        console.error('Erreur lors de la suppression de la réunion:', error);
+        throw error;
+      }
+      console.log('Réunion supprimée avec succès:', meetingId);
+      // Mettre à jour la liste des réunions passées après suppression
+      setPastMeetings(prevMeetings => prevMeetings.filter(meeting => meeting.id !== meetingId));
+      // Optionnel: alerte de succès, ou un toast/notification plus discret
+      // alert('Réunion supprimée de votre historique.'); 
+    } catch (error) {
+      alert('Impossible de supprimer la réunion. Veuillez réessayer. ' + error.message);
+    }
+  };
+
   if (isLoadingUser || (!currentUser && !window.location.pathname.startsWith('/login'))) { // Affiche le chargement tant que l'utilisateur n'est pas chargé, sauf si on est déjà sur login
     return <div className="min-h-screen flex items-center justify-center bg-minimeet-background text-minimeet-text-light">Chargement de la session...</div>;
   }
@@ -262,12 +297,20 @@ const DashboardPage = () => {
                       Créée le: {new Date(meeting.created_at).toLocaleDateString()} à {new Date(meeting.created_at).toLocaleTimeString()}
                     </p>
                   </div>
-                  <button 
-                    onClick={() => navigate(`/meet/${meeting.room_id}`)} 
-                    className="px-4 py-1.5 bg-minimeet-primary-accent text-white text-sm rounded-minimeet-button hover:bg-minimeet-primary-accent/90 transition-colors duration-150"
-                  >
-                    Rejoindre
-                  </button>
+                  <div className="flex flex-col sm:flex-row sm:items-center mt-2 sm:mt-0">
+                    <button 
+                      onClick={() => navigate(`/meet/${meeting.room_id}`)} 
+                      className="px-3 py-1.5 bg-minimeet-primary-accent text-white text-xs sm:text-sm rounded-minimeet-button hover:bg-minimeet-primary-accent/90 transition-colors duration-150 sm:mr-2 mb-1.5 sm:mb-0 w-full sm:w-auto"
+                    >
+                      Rejoindre
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteMeeting(meeting.id)} 
+                      className="px-3 py-1.5 bg-minimeet-action-red text-white text-xs sm:text-sm rounded-minimeet-button hover:bg-minimeet-action-red/90 transition-colors duration-150 w-full sm:w-auto"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
