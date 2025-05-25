@@ -53,7 +53,7 @@ const RegisterPage = () => {
         console.log("User metadata (via auth.updateUser) mis à jour avec succès:", updatedUserData);
       }
 
-      setSuccess("Inscription réussie ! Veuillez vérifier vos e-mails pour confirmer votre compte.");
+      setSuccess("Inscription réussie !");
       // Optionnel: rediriger après un délai si vous le souhaitez, par exemple vers la page de connexion.
       // setTimeout(() => navigate('/login'), 3000);
     } catch (error) {
